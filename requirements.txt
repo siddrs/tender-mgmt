@@ -1,4 +1,3 @@
 streamlit
-pymongo
-bcrypt
-python-dotenv
+pandas
+sqlite-s3-query

@@ -66,3 +66,9 @@ def vendor_login():
     if st.session_state.vendor_logged_in:
         st.success(f"Logged in as: {st.session_state.vendor_email}")
         st.write("Vendor dashboard will appear here.")
+
+
+# i have completed the login signup part.
+# please implement the rest.
+# dashboard will load right below the login stuff and
+# if you want the login stuff to disappear first and then the dashboard to show, try using session state, like i have in admin dashboard

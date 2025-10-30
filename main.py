@@ -16,7 +16,7 @@ def main():
     if role == "Admin":
         admin_login()
     else:
-        vendor_login()  # we’ll build this soon
+        vendor_login()  # todo
 
 if __name__ == "__main__":
     main()

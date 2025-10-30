@@ -1,5 +1,10 @@
 import sqlite3
 
+
+# should ideally run once after main function is called
+# if you're doing some changes to the schema (not recommended) then try NOT to use ALTER.
+# instead replace the .db file with another one, and old schema with new one (yes, the new file will be empty and not have the previous entries)
+
 def setup_database():
     conn = sqlite3.connect("tendermanagement.db")
     cur = conn.cursor()

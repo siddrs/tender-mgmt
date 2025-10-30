@@ -2,6 +2,11 @@ import streamlit as st
 import pandas as pd
 from database.db_utils import *
 
+# to do
+# display bids, filter them and evaluate them
+
+
+
 # admin login fuction
 def admin_login():
     correct_password = "admin123"  # hardcoded admin password
