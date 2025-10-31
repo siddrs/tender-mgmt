@@ -3,7 +3,7 @@ import pandas as pd
 from database.db_utils import *
 
 # to do
-# display bids, filter them and evaluate them
+# award winner
 
 
 
@@ -31,34 +31,63 @@ def admin_login():
     else:
         show_admin_dashboard()
 
+
+
+
 def show_admin_dashboard():
     # st.write('checking')
-
-
-
     st.title(f"**Admin Dashboard**")
+    # st.sidebar.title(f"**Admin Dashboard**")
+    # fxn = st.sidebar.radio("Select:", ["Manage Tenders", "Manage Vendors", "Manage Bids", "Log Out"])
 
-    # select box for all functionalities ek chhat ke neeche
+
+    tab1, tab2, tab3, tab4 = st.tabs([f"**Manage Tenders**", f"**Manage Vendors**", f"**Manage Bids**", f"**Log Out**"])
+
+    with tab1:
+        manage_tenders()
+    with tab2:
+        manage_vendors()
+    with tab3:
+        manage_bids()
+    with tab4:
+        if st.button("Log Out"):
+            st.session_state.admin_logged_in = False
+            st.success("Logged out successfully.")
+            st.rerun()
+
+
+def manage_bids():
     option = st.selectbox(
         "Select an action:",
         [
             "— Select —",
-            "View All Vendors",
-            "Add New Vendor",
-            "Delete a Vendor",
-            "Create Tender",
-            "View All Tenders",
-            "Delete Tenders",
-            "Edit Tenders",
-            "Logout"
+            "View and Evaluate a Bid",
+            "Award Bids",
+            "View Past Logs",
         ]
     )
 
-    # yaha pr i've tried to abstract away all SQL queries
-    # they are present in the db_utils file WARNING: which is in a different subdirectory
-    # check file structure
-    # use 'black' for reformatting again and again so it doesn't look dreary
-    # whenever table involved, pls use pandas dataframes (if you aren't able to, then only go for md)
+
+    if option == "View and Evaluate a Bid":
+        vievaluate_bids()
+    elif option == "Award Bids":
+        award()
+        #pass
+    elif option == "View Past Logs":
+        #view_logs()
+        pass
+
+
+def manage_vendors():
+    option = st.selectbox(
+        "Select an action:",
+        [
+            "— Select —",
+            "View ALl Vendors",
+            "Add a Vendor",
+            "Delete a Vendor",
+        ]
+    )
 
     if option == "View All Vendors":
         vendors_df = get_all_vendors()
@@ -68,7 +97,7 @@ def show_admin_dashboard():
         else:
             st.info("No vendors found.")
 
-    elif option == "Add New Vendor":
+    elif option == "Add a Vendor":
         st.subheader("Add a New Vendor")
         name = st.text_input("Name")
         email = st.text_input("Email")
@@ -88,12 +117,21 @@ def show_admin_dashboard():
             delete_vendor_by_email(email)
             st.warning(f"Vendor with email '{email}' has been deleted (if existed).")
 
-    elif option == "Logout":
-        st.session_state.admin_logged_in = False
-        st.success("Logged out successfully.")
-        st.rerun()
 
-    elif option == "Create Tender":
+
+def manage_tenders():
+    option = st.selectbox(
+        "Select an action:",
+        [
+            "— Select —",
+            "Create Tender",
+            "View All Tenders",
+            "Delete Tenders",
+            "Edit Tenders",
+        ]
+    )
+
+    if option == "Create Tender":
         create_tender()
 
     elif option == "View All Tenders":
@@ -106,6 +144,37 @@ def show_admin_dashboard():
     elif option == "Edit Tenders":
         st.subheader("Update Tender Details")
         edit()
+
+
+
+
+
+
+
+
+
+    # checking purposes only
+    #conn = get_connection()
+    # cur = conn.cursor()
+    # cur.execute("""
+    # SELECT * FROM Bid
+    # """)
+    # rows = cur.fetchall()
+    # conn.close()
+    #
+    # if not rows:
+    #     st.warning("Oops!")
+    #     return
+    #
+    # df = pd.DataFrame(
+    #     rows
+    # )
+    # st.dataframe(df, use_container_width=True)
+
+
+
+
+
 
 def create_tender():
     st.subheader("Create New Tender")
@@ -134,3 +203,23 @@ def create_tender():
 
         st.success("Tender created successfully!")
 
+
+
+
+
+
+ # # select box for all functionalities ek chhat ke neeche
+ #    option = st.selectbox(
+ #        "Select an action:",
+ #        [
+ #            "— Select —",
+ #            "View All Vendors",
+ #            "Add New Vendor",
+ #            "Delete a Vendor",
+ #            "Create Tender",
+ #            "View All Tenders",
+ #            "Delete Tenders",
+ #            "Edit Tenders",
+ #            "Logout"
+ #        ]
+ #    )
