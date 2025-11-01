@@ -4,6 +4,14 @@ import streamlit as st
 from dashboards.admin_dashboard import admin_login
 from dashboards.vendor_dashboard import vendor_login  # i have added it
 from setup_db import setup_database
+import urllib.parse
+
+# use wide layout by default
+st.set_page_config(
+    layout="wide",
+    page_title="Tender Management System",
+    initial_sidebar_state="expanded"    
+) 
 
 def main():
     st.sidebar.title("Tender Management System")
@@ -16,7 +24,7 @@ def main():
     if role == "Admin":
         admin_login()
     else:
-        vendor_login()  # todo
+        vendor_login()
 
 if __name__ == "__main__":
     main()

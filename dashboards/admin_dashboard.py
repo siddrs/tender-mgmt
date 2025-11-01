@@ -1,10 +1,25 @@
-import streamlit as st
+import streamlit as st 
 import pandas as pd
 from database.db_utils import *
 
 # to do
 # award winner
-
+# NOTE:
+# When implementing the award functionality, please make sure to notify the winning vendor
+# and all other participants.
+#
+# Use the helper function: 
+#     create_notification(vendor_id, title, message)
+#
+# Example:
+#     create_notification(
+#         winner_id,
+#         "Tender Awarded",
+#         f"Congratulations! You have been awarded Tender {selected_tender_ref_id}."
+#     )
+#
+# You can fetch all other bidders for the same tender with get_bidders_for_tender(selected_tender_ref_id)
+# and send them a "Not Awarded" notification.
 
 
 # admin login fuction
@@ -83,7 +98,7 @@ def manage_vendors():
         "Select an action:",
         [
             "— Select —",
-            "View ALl Vendors",
+            "View All Vendors",
             "Add a Vendor",
             "Delete a Vendor",
         ]
@@ -93,7 +108,7 @@ def manage_vendors():
         vendors_df = get_all_vendors()
         if not vendors_df.empty:
             st.subheader("Registered Vendors")
-            st.dataframe(vendors_df, use_container_width=True)
+            st.dataframe(vendors_df, use_container_width=True, hide_index=True)
         else:
             st.info("No vendors found.")
 
