@@ -464,85 +464,85 @@ def vievaluate_bids():
 
 # --------------
 # doesn't work yet
-def award():
-    conn = get_connection()
-    cur = conn.cursor()
-
-    # Get open tenders
-    tenders = pd.read_sql_query(
-        "SELECT tender_id, tender_ref_no, title FROM Tender WHERE status = 'Open'",
-        conn
-    )
-
-    if tenders.empty:
-        st.warning("No open tenders available.")
-        return
-
-    # Select tender
-    selected_ref = st.selectbox(
-        "Select an open tender:",
-        tenders['tender_ref_no'],
-        format_func=lambda ref: f"{ref} — {tenders.loc[tenders['tender_ref_no'] == ref, 'title'].values[0]}"
-    )
-
-    tender_id = tenders.loc[tenders['tender_ref_no'] == selected_ref, 'tender_id'].values[0]
-
-    bids = pd.read_sql_query(
-        """
-        SELECT vendor_id, submission_date, technical_spec, financial_spec, status,
-               technical_score, financial_score, final_score, remarks
-        FROM Bid
-        WHERE tender_id = ?
-        """,
-        conn,
-        params=(tender_id,)
-    )
-
-    if bids.empty:
-        st.info("No bids submitted for this tender yet.")
-        return
-    else:
-        st.dataframe(bids, use_container_width=True)
-
-    vendor_list = []
-    for _, bid in bids.iterrows():
-        cur.execute("SELECT name FROM Vendor WHERE vendor_id = ?", (bid['vendor_id'],))
-        vendor_name = cur.fetchone()[0]
-        vendor_list.append(f"{bid['vendor_id']} - {vendor_name}")
-
-    selected_vendor= st.selectbox("Select a winner", vendor_list)
-    winner_id = int(selected_vendor.split(" - ")[0])
-
-    if st.button("Award Tender"):
-        try:
-            closed_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT INTO BidLog (
-                    vendor_id, tender_id, submission_date, technical_spec, financial_spec,
-                    status, opened_at, technical_score, financial_score, final_score,
-                    remarks, closed_timestamp, is_winner
-                )
-                SELECT vendor_id, tender_id, submission_date, technical_spec, financial_spec,
-                       status, opened_at, technical_score, financial_score, final_score,
-                       remarks, ?, CASE WHEN vendor_id = ? THEN 1 ELSE 0 END
-                FROM Bid WHERE tender_id = ?
-            """, (closed_time, winner_id, tender_id))
-
-
-            cursor.execute("DELETE FROM Bid WHERE tender_id = ?", (tender_id,))
-            cursor.execute("UPDATE Tender SET status = 'Closed' WHERE tender_id = ?", (tender_id,))
-            conn.commit()
-
-            st.success(f"Tender {tender_id} has been awarded successfully and moved to Logs")
-            #st.rerun()
-
-        except Exception as e:
-            conn.rollback()
-            st.error(f"Error while awarding tender: {e}")
-
-    conn.close()
+# def award():
+#     conn = get_connection()
+#     cur = conn.cursor()
+#
+#     # Get open tenders
+#     tenders = pd.read_sql_query(
+#         "SELECT tender_id, tender_ref_no, title FROM Tender WHERE status = 'Open'",
+#         conn
+#     )
+#
+#     if tenders.empty:
+#         st.warning("No open tenders available.")
+#         return
+#
+#     # Select tender
+#     selected_ref = st.selectbox(
+#         "Select an open tender:",
+#         tenders['tender_ref_no'],
+#         format_func=lambda ref: f"{ref} — {tenders.loc[tenders['tender_ref_no'] == ref, 'title'].values[0]}"
+#     )
+#
+#     tender_id = tenders.loc[tenders['tender_ref_no'] == selected_ref, 'tender_id'].values[0]
+#
+#     bids = pd.read_sql_query(
+#         """
+#         SELECT vendor_id, submission_date, technical_spec, financial_spec, status,
+#                technical_score, financial_score, final_score, remarks
+#         FROM Bid
+#         WHERE tender_id = ?
+#         """,
+#         conn,
+#         params=(tender_id,)
+#     )
+#
+#     if bids.empty:
+#         st.info("No bids submitted for this tender yet.")
+#         return
+#     else:
+#         st.dataframe(bids, use_container_width=True)
+#
+#     vendor_list = []
+#     for _, bid in bids.iterrows():
+#         cur.execute("SELECT name FROM Vendor WHERE vendor_id = ?", (bid['vendor_id'],))
+#         vendor_name = cur.fetchone()[0]
+#         vendor_list.append(f"{bid['vendor_id']} - {vendor_name}")
+#
+#     selected_vendor= st.selectbox("Select a winner", vendor_list)
+#     winner_id = int(selected_vendor.split(" - ")[0])
+#
+#     if st.button("Award Tender"):
+#         try:
+#             closed_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+#
+#             cursor = conn.cursor()
+#             cursor.execute("""
+#                 INSERT INTO BidLog (
+#                     vendor_id, tender_id, submission_date, technical_spec, financial_spec,
+#                     status, opened_at, technical_score, financial_score, final_score,
+#                     remarks, closed_timestamp, is_winner
+#                 )
+#                 SELECT vendor_id, tender_id, submission_date, technical_spec, financial_spec,
+#                        status, opened_at, technical_score, financial_score, final_score,
+#                        remarks, ?, CASE WHEN vendor_id = ? THEN 1 ELSE 0 END
+#                 FROM Bid WHERE tender_id = ?
+#             """, (closed_time, winner_id, tender_id))
+#
+#
+#             cursor.execute("DELETE FROM Bid WHERE tender_id = ?", (tender_id,))
+#             cursor.execute("UPDATE Tender SET status = 'Closed' WHERE tender_id = ?", (tender_id,))
+#             conn.commit()
+#
+#             st.success(f"Tender {tender_id} has been awarded successfully and moved to Logs")
+#             #st.rerun()
+#
+#         except Exception as e:
+#             conn.rollback()
+#             st.error(f"Error while awarding tender: {e}")
+#
+#     conn.close()
 
 
 ### VENDOR HELPER FUNCTIONS ###
@@ -752,3 +752,234 @@ def mark_notifications_read(vendor_email, ids=None):
     conn.close()
 
 
+
+# def award():
+#     st.subheader("View Bids for Open Tenders")
+#
+#     conn = get_connection()
+#
+#
+#     tenders = pd.read_sql_query(
+#         "SELECT tender_id, tender_ref_no, title FROM Tender WHERE status = 'Open'",
+#         conn
+#     )
+#
+#     if tenders.empty:
+#         st.warning("No open tenders available.")
+#         return
+#
+#
+#     selected_tender = st.selectbox(
+#         "Select an open tender:",
+#         tenders['tender_ref_no'],
+#         format_func=lambda ref: f"{ref} — {tenders.loc[tenders['tender_ref_no'] == ref, 'title'].values[0]}"
+#     )
+#
+#
+#     bids = pd.read_sql_query(
+#         """
+#         SELECT vendor_id, submission_date, technical_spec, financial_spec, status,
+#                technical_score, financial_score, final_score, remarks
+#         FROM Bid
+#         WHERE tender_id = (SELECT tender_id FROM Tender WHERE tender_ref_no = ?)
+#         """,
+#         conn,
+#         params=(selected_tender,)
+#     )
+#
+#     if bids.empty:
+#         st.info("No bids submitted for this tender yet.")
+#     else:
+#         st.dataframe(bids, use_container_width=True)
+#
+#
+#
+#     winner_id = st.selectbox("Select a winner:", bids['vendor_id'])
+#
+#
+#     if st.button("Award Tender"):
+#         try:
+#             closed_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+#
+#             cursor = conn.cursor()
+#             cursor.execute("""
+#                     INSERT INTO BidLog (
+#                         vendor_id, tender_id, submission_date, technical_spec, financial_spec,
+#                         status, opened_at, technical_score, financial_score, final_score,
+#                         remarks, closed_timestamp, is_winner
+#                     )
+#                     SELECT vendor_id, tender_id, submission_date, technical_spec, financial_spec,
+#                            status, opened_at, technical_score, financial_score, final_score,
+#                            remarks, ?, CASE WHEN vendor_id = ? THEN 1 ELSE 0 END
+#                     FROM Bid WHERE tender_id = ?
+#                 """, (closed_time, winner_id, selected_tender))
+#
+#             # Remove from Bid table and mark tender closed
+#             cursor.execute("DELETE FROM Bid WHERE tender_id = ?", (selected_tender,))
+#             cursor.execute("UPDATE Tender SET status = 'Closed' WHERE tender_id = ?", (selected_tender,))
+#             conn.commit()
+#
+#             st.success(f"Tender {selected_tender} has been awarded successfully and moved to Logs")
+#             # st.rerun()
+#
+#         except Exception as e:
+#             conn.rollback()
+#             st.error(f"Error while awarding tender: {e}")
+#
+#     conn.close()
+
+
+# -------------------------------------------------
+
+
+def view_logs():
+    st.header("View Awarded Tender Logs")
+
+    conn = get_connection()
+
+    logs_query = """
+        SELECT 
+            l.tender_id,
+            t.tender_ref_no,
+            t.title AS tender_title,
+            l.vendor_id,
+            v.name AS vendor_name,
+            l.technical_score,
+            l.financial_score,
+            l.final_score,
+            l.remarks,
+            l.closed_timestamp,
+            l.is_winner
+        FROM BidLog l
+        JOIN Tender t ON l.tender_id = t.tender_id
+        LEFT JOIN Vendor v ON l.vendor_id = v.vendor_id
+        ORDER BY l.tender_id, l.final_score DESC
+    """
+
+    logs = pd.read_sql_query(logs_query, conn)
+    conn.close()
+
+    if logs.empty:
+        st.info("No logs available.")
+        return
+
+
+    tender_groups = logs.groupby(['tender_id', 'tender_ref_no', 'tender_title'])
+
+    for (tender_id, ref, title), group in tender_groups:
+        st.subheader(f"Tender {ref} — {title}")
+
+        group_display = group.copy()
+        group_display['Winner'] = group_display['is_winner'].apply(lambda x: "Winner" if x == 'Yes' else "No")
+        st.dataframe(group_display[['vendor_id', 'vendor_name', 'technical_score',
+                                    'financial_score', 'final_score', 'remarks', 'closed_timestamp', 'Winner']],
+                     use_container_width=True)
+
+
+# ---------------------------------------------------------------------------------
+
+import streamlit as st
+import pandas as pd
+from datetime import datetime
+from database.db_utils import get_connection
+
+def award():
+    st.header("Award Tender")
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+
+    tenders = pd.read_sql_query(
+        "SELECT tender_id, tender_ref_no, title FROM Tender WHERE status = 'Open'",
+        conn
+    )
+    if tenders.empty:
+        st.warning("No open tenders available.")
+        conn.close()
+        return
+
+
+    selected_ref = st.selectbox(
+        "Select an open tender:",
+        tenders['tender_ref_no'],
+        format_func=lambda ref: f"{ref} — {tenders.loc[tenders['tender_ref_no'] == ref, 'title'].values[0]}"
+    )
+    tender_id = int(tenders.loc[tenders['tender_ref_no'] == selected_ref, 'tender_id'].values[0])
+
+
+    bids = pd.read_sql_query(
+        "SELECT * FROM Bid WHERE tender_id = ?",
+        conn,
+        params=(tender_id,)
+    )
+    if bids.empty:
+        st.info("No bids submitted for this tender yet.")
+        conn.close()
+        return
+
+    st.subheader("Bids for this tender")
+    st.dataframe(bids, use_container_width=True)
+
+
+    if bids['final_score'].isnull().any():
+        st.warning("Cannot award this tender. Some bids have not been evaluated yet.")
+        conn.close()
+        return
+
+    st.success("All bids have been evaluated. You can now select a winner.")
+    vendor_options = []
+    for _, row in bids.iterrows():
+        cur.execute("SELECT name FROM Vendor WHERE vendor_id = ?", (row['vendor_id'],))
+        result = cur.fetchone()
+        name = result[0] if result else "Unknown"
+        vendor_options.append(f"{row['vendor_id']} — {name}")
+
+    selected_vendor_str = st.selectbox("Select winner:", vendor_options)
+    winner_id = int(selected_vendor_str.split(" — ")[0])
+
+
+    if st.button("Award Tender"):
+        try:
+            closed_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            for _, row in bids.iterrows():
+                cur.execute("""
+                    INSERT INTO BidLog (
+                        vendor_id, tender_id, submission_date, technical_spec, financial_spec,
+                        status, opened_at, technical_score, financial_score, final_score,
+                        remarks, closed_timestamp, is_winner
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    row['vendor_id'],
+                    row['tender_id'],
+                    row['submission_date'],
+                    row['technical_spec'],
+                    row['financial_spec'],
+                    row['status'],
+                    row['opened_at'],
+                    row['technical_score'],
+                    row['financial_score'],
+                    row['final_score'],
+                    row['remarks'],
+                    closed_time,
+                    'Yes' if row['vendor_id'] == winner_id else 'No'
+                ))
+
+
+            cur.execute("DELETE FROM Bid WHERE tender_id = ?", (tender_id,))
+
+
+            cur.execute("UPDATE Tender SET status = 'Closed' WHERE tender_id = ?", (tender_id,))
+
+            conn.commit()
+            st.success(f"Tender {selected_ref} awarded successfully and moved to BidLog.")
+
+        except Exception as e:
+            conn.rollback()
+            st.error(f"Error while awarding tender: {e}")
+
+        finally:
+            conn.close()
+
+# ---------------------------------------------------------
