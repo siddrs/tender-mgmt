@@ -3,6 +3,13 @@ import sqlite3
 import pandas as pd
 from database.db_utils import *
 
+for key, default in {
+    "vendor_logged_in": False,
+    "vendor_email": None,
+    "page": None,
+}.items():
+    if key not in st.session_state:
+        st.session_state[key] = default
 
 def vendor_login():
     if "vendor_logged_in" not in st.session_state:
@@ -83,6 +90,10 @@ def vendor_login():
 
 def show_vendor_dashboard():
 
+    if not st.session_state.get("vendor_logged_in"):
+        st.warning("Please log in as a vendor to continue.")
+        st.stop()
+
     if st.session_state.get("page") == "tender_details":
         show_tender_details()
         return
@@ -136,7 +147,7 @@ def show_open_tenders():
     # filters
     locations = get_tenders_locations()
     loc_options = ["All"] + sorted([l for l in locations if l])
-    col_f1, col_f2 = st.columns([2, 4])
+    col_f1, col_f2 = st.columns([1, 1])
     with col_f1:
         loc = st.selectbox("Location", loc_options, key="filter_location")
     with col_f2:
@@ -147,48 +158,40 @@ def show_open_tenders():
         st.info("No open tenders")
         return
 
-    st.markdown("""
-        <style>
-            div[data-testid="stVerticalBlock"] > div:has(div.tender-row) {
-                margin-bottom: 0 !important;
-                padding-bottom: 0 !important;
-            }
-            .tender-row {
-                border: 1px solid #e6e6e6;
-            }
-            .tender-title {
-                margin-top: 15px;
-            }
-            .tender-meta {
-                font-size: 1rem;
-                margin-bottom: 10px;
-            }
-            .stButton > button {
-                padding: 3px 10px;
-                font-size: 0.85rem;
-            }
-        </style>
-    """, unsafe_allow_html=True)
+    # build list of tender dicts for easy indexing
+    tenders = df.to_dict(orient="records")
 
-    for _, row in df.iterrows():
-        ref = row["tender_ref_no"]
-        title = row["title"] or "Untitled"
-        opening = row.get("opening_date", "")
-        closing = row.get("closing_date", "")
-        location = row.get("location", "-")
+    # iterate two-per-row
+    for idx in range(0, len(tenders), 2):
+        left = tenders[idx]
+        right = tenders[idx + 1] if idx + 1 < len(tenders) else None
 
-        st.markdown(f'<div class="tender-row">', unsafe_allow_html=True)
-        st.markdown(f"<div class='tender-title'>Title: <b>{title}</b> </div>", unsafe_allow_html=True)
-        st.markdown(
-            f"<div class='tender-meta'>Reference No.: <b>{ref}</b> <br> Location: <b>{location}</b> <br> Opens: <b> {opening} </b> | Closes: <b> {closing} </b></div>",
-            unsafe_allow_html=True,
-        )
-        if st.button("View Details", key=f"view_{row['tender_id']}"):
-            st.session_state["selected_tender_ref"] = ref
-            st.session_state["page"] = "tender_details"
-            st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
+        cols = st.columns([1, 1], gap="small")  # two equal columns
 
+        # LEFT card
+        with cols[0]:
+            with st.container(border=True):
+                st.markdown(f"Title: **{left['title']}**")
+                st.markdown(f"Tender Ref: **{left['tender_ref_no']}**")
+                st.markdown(f"Location: {left.get('location','-')}")
+                st.markdown(f"Opens: **{left.get('opening_date','-')}** • Closes: **{left.get('closing_date','-')}**")
+                if st.button("View Details", key=f"view_{left['tender_id']}"):
+                    st.session_state["selected_tender_ref"] = left["tender_ref_no"]
+                    st.session_state["page"] = "tender_details"
+                    st.rerun()
+
+        # RIGHT card (only if exists)
+        if right:
+            with cols[1]:
+                with st.container(border=True):
+                    st.markdown(f"Title: **{right['title']}**")
+                    st.markdown(f"Ref: **{right['tender_ref_no']}**")
+                    st.markdown(f"Location: {right.get('location','-')}")
+                    st.markdown(f"Opens: **{right.get('opening_date','-')}** • Closes: **{right.get('closing_date','-')}**")
+                    if st.button("View Details", key=f"view_{right['tender_id']}"):
+                        st.session_state["selected_tender_ref"] = right["tender_ref_no"]
+                        st.session_state["page"] = "tender_details"
+                        st.rerun()
 
         
 ###########################
@@ -218,35 +221,43 @@ def show_tender_details():
     st.write(tender.get("description") or "_No description_")
 
     st.markdown("---")
-    st.markdown("### Place a Bid")
-    tech = st.text_area("Technical Specification", key="detail_tech")
-    fin = st.text_area("Financial Specification / Quote", key="detail_fin")
 
-    col1, col2, col3 = st.columns([1, 7, 1])
+    col1, col2 = st.columns([8, 1])
     with col1:
-        if st.button("Submit Bid"):
-            if not tech.strip() or not fin.strip():
+        st.subheader("Place a Bid")
+    with col2:
+        if st.button("Back to List", key=f"back_{tender['tender_ref_no']}"):
+            st.session_state["page"] = None
+            st.rerun()
+
+    ref = tender["tender_ref_no"]
+    submitted_flag_key = f"bid_submitted_{ref}"
+
+    # If already submitted, show confirmation
+    if st.session_state.get(submitted_flag_key, False):
+        st.success("Your bid was submitted successfully.")
+    else:
+        with st.form(key=f"form_bid_{ref}"):
+            tech = st.text_area("Technical Specification", key=f"detail_tech_{ref}")
+            fin = st.text_input("Financial Specification / Quote", key=f"detail_fin_{ref}")
+            submitted = st.form_submit_button("Submit Bid")
+
+        if submitted:
+            if not (tech and tech.strip()) or not (fin and fin.strip()):
                 st.warning("Please fill in both Technical and Financial specifications before submitting.")
             else:
                 vendor = get_vendor_by_email(st.session_state.vendor_email)
-                ok, msg = submit_bid(vendor["vendor_id"], tender["tender_ref_no"], tech.strip(), fin.strip())
+                ok, msg = submit_bid(vendor["vendor_id"], ref, tech.strip(), fin.strip())
                 if ok:
                     create_notification(
                         vendor["vendor_id"],
                         "Bid Submitted",
-                        f"Your bid for {tender['tender_ref_no']} was submitted successfully."
+                        f"Your bid for {ref} was submitted successfully."
                     )
+                    st.session_state[submitted_flag_key] = True
                     st.success(msg)
-                    st.session_state["page"] = None
-                    st.rerun()
                 else:
                     st.error(msg)
-    with col2:
-        ...
-    with col3:
-        if st.button("Back to List"):
-            st.session_state["page"] = None
-            st.rerun()    
 
 
 
@@ -337,67 +348,50 @@ def submitted_bids_tab(vendor):
         st.info("No bids found for selected filters.")
         return
 
-    # ---- Display each bid as a block ----
-    st.markdown("""
-        <style>
-            .bid-card {
-                border: 1px solid #e6e6e6;
-                padding: 0px 0px;
-                margin-bottom: 15px;
-            } 
-            .bid-title {
-                margin-top: 15px; 
-            }
-            .bid-meta {
-                margin-bottom: 20px;
-            }
-            .stButton > button {
-                padding: 4px 10px;
-                font-size: 0.85rem;
-            }
-        </style>
-    """, unsafe_allow_html=True)
+    cols = st.columns(2)
+    for i, row in filtered.reset_index(drop=True).iterrows():
+        c = cols[i % 2]
 
-    for i, row in filtered.iterrows():
-        tender_ref = row["tender_ref_no"]
-        title = row["title"]
-        status = row["status"]
-        loc = row["location"]
-        submitted_on = row["submission_date"]
+        with c.container(border=True):
+            tender_ref = row["tender_ref_no"]
+            title = row["title"]
+            status = row["status"]
+            loc = row["location"]
+            submitted_on = row["submission_date"]
 
-        st.markdown("<div class='bid-card'>", unsafe_allow_html=True)
-        st.markdown(f"<div class='bid-title'>Title: <b>{title}</b> </div>", unsafe_allow_html=True)
-        st.markdown(
-            f"<div class='bid-meta'>Tender Reference No.: <b>{tender_ref}</b> <br> Location: {loc} <br> Submitted on: {submitted_on} <br> Status: <b>{status}</b></div>",
-            unsafe_allow_html=True,
-        )
+            st.markdown(f"**{title}**")
+            st.caption(f"Ref: {tender_ref}")
+            st.caption(f"Location: {loc}")
+            st.caption(f"Submitted on: {submitted_on}")
+            st.caption(f"**Status:** {status}")
 
-        col1, col2, col3 = st.columns([3, 3, 1])
+            b1, b2, b3 = st.columns([1.9, 1.8, 1])
+            uid = f"{row['tender_id']}_{i}"
 
-        # Create a unique suffix
-        unique_id = f"{row['tender_id']}_{i}"
-
-        with col1:
-            if st.button("View Details", key=f"view_{unique_id}"):
-                st.session_state["selected_bid"] = row.to_dict()
-                st.session_state["page"] = "view_bid"
-                st.rerun()
-
-        if status == "Submitted":
-            with col2:
-                if st.button("Edit Bid", key=f"edit_{unique_id}"):
+            with b1:
+                if st.button("View", key=f"view_{uid}"):
+                    st.session_state["selected_bid"] = row.to_dict()
+                    st.session_state["page"] = "view_bid"
+                    st.rerun()
+            with b2:
+                if status == "Submitted" and st.button("Edit", key=f"edit_{uid}"):
                     st.session_state["selected_bid"] = row.to_dict()
                     st.session_state["page"] = "edit_bid"
                     st.rerun()
-            with col3:
-                if st.button("Withdraw Bid", key=f"del_{unique_id}"):
+            with b3:
+                if status == "Submitted" and st.button("Withdraw", key=f"del_{uid}"):
                     vendor_obj = get_vendor_by_email(st.session_state.vendor_email)
                     delete_bid(row["tender_id"], vendor_obj["vendor_id"])
-                    create_notification(vendor_obj["vendor_id"], "Bid Withdrawn", f"Your bid for Tender {tender_ref} was withdrawn.")
+                    create_notification(
+                        vendor_obj["vendor_id"],
+                        "Bid Withdrawn",
+                        f"Your bid for Tender {tender_ref} was withdrawn."
+                    )
                     st.success(f"Bid for {tender_ref} withdrawn.")
                     st.rerun()
 
-        st.markdown("</div>", unsafe_allow_html=True)
+        if (i + 1) % 2 == 0:
+            cols = st.columns(2)
 
 
 
@@ -472,7 +466,7 @@ def inbox_tab(vendor):
     for nid, title, message, ts, is_read in rows:
         with st.container(border=True):
             if not is_read:
-                st.markdown(f"**{title}**  | _[Unread Notification]_")
+                st.markdown(f"**{title}**   _[Unread Notification]_")
             else:
                 st.markdown(f"**{title}**")
 
