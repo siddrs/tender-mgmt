@@ -89,8 +89,7 @@ def manage_bids():
         award()
         #pass
     elif option == "View Past Logs":
-        #view_logs()
-        pass
+        view_logs()
 
 
 def manage_vendors():
