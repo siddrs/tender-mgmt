@@ -5,3 +5,4 @@ __pycache__/
 .python-version
 vendor_dashboard_backup.py
 tendermanagement.db
+*.db

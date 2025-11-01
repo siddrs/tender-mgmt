@@ -158,10 +158,8 @@ def show_open_tenders():
         st.info("No open tenders")
         return
 
-    # build list of tender dicts for easy indexing
     tenders = df.to_dict(orient="records")
 
-    # iterate two-per-row
     for idx in range(0, len(tenders), 2):
         left = tenders[idx]
         right = tenders[idx + 1] if idx + 1 < len(tenders) else None
@@ -199,12 +197,19 @@ def show_open_tenders():
 ###########################
 
 def show_tender_details():
+    vendor = get_vendor_by_email(st.session_state.get("vendor_email"))
+    if not vendor or not st.session_state.get("vendor_logged_in"):
+        st.warning("Please log in as a vendor to continue.")
+        st.session_state["page"] = None
+        st.rerun()
+
     ref = st.session_state.get("selected_tender_ref") or st.session_state.get("prefill_tender_ref")
     tender = get_tender_by_ref(ref)
     if not tender:
         st.warning("Tender not selected.")
         st.session_state["page"] = None
         st.rerun()
+
     st.header(f"Tender Details — {tender['title']}")
     st.markdown("### Basic Details")
     c1, c2 = st.columns(2)
@@ -213,13 +218,12 @@ def show_tender_details():
         st.write(f"**Location:** {tender['location']}")
         st.write(f"**Tender ID:** {tender['tender_id']}")
     with c2:
-        st.write(f"**Opening Date:** {tender['opening_date']}")
-        st.write(f"**Closing Date:** {tender['closing_date']}")
-        st.write(f"**Published On:** {tender['publishing_date']}")
+        st.write(f"**Opening Date:** {tender.get('opening_date','-')}")
+        st.write(f"**Closing Date:** {tender.get('closing_date','-')}")
+        st.write(f"**Published On:** {tender.get('publishing_date','-')}")
     st.markdown("---")
     st.markdown("### Description")
     st.write(tender.get("description") or "_No description_")
-
     st.markdown("---")
 
     col1, col2 = st.columns([8, 1])
@@ -230,34 +234,42 @@ def show_tender_details():
             st.session_state["page"] = None
             st.rerun()
 
-    ref = tender["tender_ref_no"]
-    submitted_flag_key = f"bid_submitted_{ref}"
+    ref_key = tender["tender_ref_no"]
+    submitted_flag_key = f"bid_submitted_{vendor['vendor_id']}_{ref_key}"
 
-    # If already submitted, show confirmation
     if st.session_state.get(submitted_flag_key, False):
         st.success("Your bid was submitted successfully.")
-    else:
-        with st.form(key=f"form_bid_{ref}"):
-            tech = st.text_area("Technical Specification", key=f"detail_tech_{ref}")
-            fin = st.text_input("Financial Specification / Quote", key=f"detail_fin_{ref}")
-            submitted = st.form_submit_button("Submit Bid")
+        return
 
-        if submitted:
-            if not (tech and tech.strip()) or not (fin and fin.strip()):
-                st.warning("Please fill in both Technical and Financial specifications before submitting.")
-            else:
-                vendor = get_vendor_by_email(st.session_state.vendor_email)
-                ok, msg = submit_bid(vendor["vendor_id"], ref, tech.strip(), fin.strip())
-                if ok:
-                    create_notification(
-                        vendor["vendor_id"],
-                        "Bid Submitted",
-                        f"Your bid for {ref} was submitted successfully."
-                    )
-                    st.session_state[submitted_flag_key] = True
-                    st.success(msg)
-                else:
-                    st.error(msg)
+    with st.form(key=f"form_bid_{ref_key}"):
+        tech = st.text_area("Technical Specification", key=f"detail_tech_{ref_key}")
+        fin = st.text_input("Financial Specification / Quote", key=f"detail_fin_{ref_key}")
+        submitted = st.form_submit_button("Submit Bid")
+
+    if submitted:
+        if not (tech and tech.strip()) or not (fin and fin.strip()):
+            st.warning("Please fill in both Technical and Financial specifications before submitting.")
+            return
+
+        ok, msg = submit_bid(vendor["vendor_id"], ref_key, tech.strip(), fin.strip())
+        if ok:
+            st.session_state[submitted_flag_key] = True
+
+            create_notification(
+                vendor["vendor_id"],
+                "Bid Submitted",
+                f"Your bid for {ref_key} was submitted successfully."
+            )
+
+            st.success(msg)
+            if "prefill_tender_ref" in st.session_state:
+                try:
+                    del st.session_state["prefill_tender_ref"]
+                except KeyError:
+                    pass
+            st.rerun()
+        else:
+            st.error(msg)
 
 
 
@@ -267,7 +279,12 @@ def show_tender_details():
 
 def submit_bid_tab(vendor):
     st.header("Submit a Bid")
-    # prefill if selected
+
+    vendor_obj = get_vendor_by_email(st.session_state.get("vendor_email"))
+    if not vendor_obj:
+        st.warning("Please log in as a vendor to continue.")
+        return
+
     pre = st.session_state.get("prefill_tender_ref")
     df = get_open_tenders()
     if df.empty:
@@ -285,34 +302,57 @@ def submit_bid_tab(vendor):
     if loc != "All":
         filtered = filtered[filtered["location"] == loc]
     if s:
-        filtered = filtered[filtered["title"].str.contains(s, case=False, na=False) |
-                            filtered["tender_ref_no"].str.contains(s, case=False, na=False)]
+        filtered = filtered[
+            filtered["title"].str.contains(s, case=False, na=False) |
+            filtered["tender_ref_no"].str.contains(s, case=False, na=False)
+        ]
 
     opts = filtered["tender_ref_no"].tolist()
+    if not opts:
+        st.info("No tenders match the filters.")
+        return
+
     if pre and pre in opts:
         selected_ref = st.selectbox("Select Tender", opts, index=opts.index(pre))
     else:
         selected_ref = st.selectbox("Select Tender", opts)
 
+    flag_key = f"bid_submitted_{vendor_obj['vendor_id']}_{selected_ref}"
+    if st.session_state.get(flag_key, False):
+        st.success("Your bid was submitted successfully.")
+        if st.button("OK", key=f"ok_{flag_key}"):
+            del st.session_state[flag_key]
+            st.rerun()
+        return
+
     tender = get_tender_by_ref(selected_ref)
     st.write(f"**Title:** {tender['title']}")
-    st.write(f"**Closing Date:** {tender['closing_date']}")
+    st.write(f"**Closing Date:** {tender.get('closing_date','-')}")
 
-    tech = st.text_area("Technical Specification", key="submit_tech")
-    fin = st.text_area("Financial Specification / Quote", key="submit_fin")
+    with st.form(key=f"submit_form_{selected_ref}"):
+        tech = st.text_area("Technical Specification", key="submit_tech")
+        fin = st.text_area("Financial Specification / Quote", key="submit_fin")
+        submit_now = st.form_submit_button("Submit Bid Now")
 
-    if st.button("Submit Bid Now"):
-        vendor_obj = get_vendor_by_email(st.session_state.vendor_email)
-        ok, msg = submit_bid(vendor_obj["vendor_id"], selected_ref, tech, fin)
-        if ok:
+    if not submit_now:
+        return
+
+    if not tech or not tech.strip() or not fin or not fin.strip():
+        st.warning("Please provide both technical and financial specifications before submitting.")
+        return
+
+    ok, msg = submit_bid(vendor_obj["vendor_id"], selected_ref, tech.strip(), fin.strip())
+    if ok:
+        st.session_state[flag_key] = True
+
+        try:
             create_notification(vendor_obj["vendor_id"], "Bid Submitted", f"Your bid for {selected_ref} was submitted.")
-            st.success(msg)
-            # clear prefill
-            if "prefill_tender_ref" in st.session_state:
-                del st.session_state["prefill_tender_ref"]
-            st.rerun()
-        else:
-            st.error(msg)
+        except Exception:
+            pass
+
+        st.rerun()
+    else:
+        st.error(msg)
 
 
 
@@ -324,74 +364,119 @@ def submitted_bids_tab(vendor):
     st.header("Your Submitted Bids")
 
     df = get_bids_for_vendor(vendor["email"])
-    if df.empty:
+
+    if (df is None) or df.empty:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT l.tender_id, t.tender_ref_no, t.title, t.location,
+                       l.submission_date, l.technical_spec, l.financial_spec,
+                       l.status, l.remarks, t.status as tender_status, l.is_winner
+                FROM BidLog l
+                JOIN Tender t ON l.tender_id = t.tender_id
+                JOIN Vendor v ON l.vendor_id = v.vendor_id
+                WHERE v.email = ?
+                ORDER BY l.submission_date DESC
+            """, (vendor["email"],))
+            rows = cur.fetchall()
+            if rows:
+                cols = ["tender_id","tender_ref_no","title","location","submission_date",
+                        "technical_spec","financial_spec","status","remarks","tender_status","is_winner"]
+                df = pd.DataFrame(rows, columns=cols)
+                df["record_type"] = "Log"
+        finally:
+            conn.close()
+
+    if df is None or df.empty:
         st.info("No bids submitted yet.")
         return
 
-    # ---- Filters ----
-    locs = ["All"] + sorted(df["location"].dropna().unique().tolist())
-    stats = ["All"] + sorted(df["status"].dropna().unique().tolist())
+    if "record_type" not in df.columns:
+        df["record_type"] = "Active"
 
-    c1, c2 = st.columns(2)
-    with c1:
-        loc = st.selectbox("Filter by Location", locs, key="sb_loc")
-    with c2:
-        status = st.selectbox("Filter by Status", stats, key="sb_status")
+    active_df = df[df["record_type"] == "Active"].copy()
+    closed_df = df[df["record_type"] == "Log"].copy()
 
-    filtered = df.copy()
-    if loc != "All":
-        filtered = filtered[filtered["location"] == loc]
-    if status != "All":
-        filtered = filtered[filtered["status"] == status]
+    def render_active_cards(source_df):
+        if source_df.empty:
+            st.info("No active bids.")
+            return
 
-    if filtered.empty:
-        st.info("No bids found for selected filters.")
-        return
+        cols = st.columns(2)
+        for i, row in source_df.reset_index(drop=True).iterrows():
+            c = cols[i % 2]
+            with c.container(border=True):
+                st.markdown(f"**{row.get('title','-')}**")
+                st.caption(f"Ref: {row.get('tender_ref_no','-')}")
+                st.caption(f"Location: {row.get('location','-')}")
+                sub_date = row.get("submission_date")
+                if pd.notna(sub_date):
+                    sub_date = str(sub_date).split(" ")[0]  # keep only YYYY-MM-DD
+                else:
+                    sub_date = "-"
+                st.caption(f"Submitted on: {sub_date}")
+                st.caption(f"**Bid Status:** {row.get('status','-')}")
+                st.caption(f"**Tender Status:** {row.get('tender_status','-')}")
+                b1, b2, b3 = st.columns([1.9, 1.8, 1])
+                uid = f"{row.get('tender_id')}_{i}"
+                with b1:
+                    if st.button("View", key=f"view_{uid}"):
+                        st.session_state["selected_bid"] = row.to_dict()
+                        st.session_state["page"] = "view_bid"
+                        st.rerun()
+                with b2:
+                    if row.get("status") == "Submitted" and st.button("Edit", key=f"edit_{uid}"):
+                        st.session_state["selected_bid"] = row.to_dict()
+                        st.session_state["page"] = "edit_bid"
+                        st.rerun()
+                with b3:
+                    if row.get("status") == "Submitted" and st.button("Withdraw", key=f"del_{uid}"):
+                        vendor_obj = get_vendor_by_email(st.session_state.vendor_email)
+                        delete_bid(row["tender_id"], vendor_obj["vendor_id"])
+                        create_notification(
+                            vendor_obj["vendor_id"],
+                            "Bid Withdrawn",
+                            f"Your bid for Tender {row.get('tender_ref_no')} was withdrawn."
+                        )
+                        st.success(f"Bid for {row.get('tender_ref_no')} withdrawn.")
+                        st.rerun()
+            if (i + 1) % 2 == 0:
+                cols = st.columns(2)
 
-    cols = st.columns(2)
-    for i, row in filtered.reset_index(drop=True).iterrows():
-        c = cols[i % 2]
+    def render_closed_cards(source_df):
+        if source_df.empty:
+            st.info("No closed/historical bids.")
+            return
 
-        with c.container(border=True):
-            tender_ref = row["tender_ref_no"]
-            title = row["title"]
-            status = row["status"]
-            loc = row["location"]
-            submitted_on = row["submission_date"]
-
-            st.markdown(f"**{title}**")
-            st.caption(f"Ref: {tender_ref}")
-            st.caption(f"Location: {loc}")
-            st.caption(f"Submitted on: {submitted_on}")
-            st.caption(f"**Status:** {status}")
-
-            b1, b2, b3 = st.columns([1.9, 1.8, 1])
-            uid = f"{row['tender_id']}_{i}"
-
-            with b1:
-                if st.button("View", key=f"view_{uid}"):
+        cols = st.columns(2)
+        for i, row in source_df.reset_index(drop=True).iterrows():
+            c = cols[i % 2]
+            with c.container(border=True):
+                st.markdown(f"**{row.get('title','-')}**")
+                st.caption(f"Ref: {row.get('tender_ref_no','-')}")
+                st.caption(f"Location: {row.get('location','-')}")
+                st.caption(f"Submitted on: {row.get('submission_date','-')}")
+                st.caption(f"**Bid Status:** {row.get('status','-')}")
+                st.caption(f"**Tender Status:** {row.get('tender_status','-')}")
+                iw = str(row.get("is_winner", "No"))
+                if iw.lower() in ("yes", "1", "true"):
+                    st.markdown(f":green[**You won this tender**]")
+                else:
+                    st.markdown(f":red[**You did not win this tender**]")
+                if st.button("View", key=f"view_closed_{row.get('tender_id')}_{i}"):
                     st.session_state["selected_bid"] = row.to_dict()
                     st.session_state["page"] = "view_bid"
                     st.rerun()
-            with b2:
-                if status == "Submitted" and st.button("Edit", key=f"edit_{uid}"):
-                    st.session_state["selected_bid"] = row.to_dict()
-                    st.session_state["page"] = "edit_bid"
-                    st.rerun()
-            with b3:
-                if status == "Submitted" and st.button("Withdraw", key=f"del_{uid}"):
-                    vendor_obj = get_vendor_by_email(st.session_state.vendor_email)
-                    delete_bid(row["tender_id"], vendor_obj["vendor_id"])
-                    create_notification(
-                        vendor_obj["vendor_id"],
-                        "Bid Withdrawn",
-                        f"Your bid for Tender {tender_ref} was withdrawn."
-                    )
-                    st.success(f"Bid for {tender_ref} withdrawn.")
-                    st.rerun()
+            if (i + 1) % 2 == 0:
+                cols = st.columns(2)
 
-        if (i + 1) % 2 == 0:
-            cols = st.columns(2)
+    st.subheader("Open / Active Bids")
+    render_active_cards(active_df)
+
+    st.markdown("---")
+    st.subheader("Closed / Historical Bids")
+    render_closed_cards(closed_df)
 
 
 
