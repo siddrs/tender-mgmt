@@ -1,0 +1,6 @@
+.idea/
+.venv/
+__pycache__/
+*.pyc 
+.python-version
+vendor_dashboard_backup.py

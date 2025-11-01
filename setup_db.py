@@ -133,6 +133,22 @@ def setup_database():
     # """)
 
 
+    # notifications table
+    cur.execute(
+    """
+        CREATE TABLE IF NOT EXISTS Notification (
+            notification_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            vendor_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            message TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            is_read INTEGER DEFAULT 0,
+            FOREIGN KEY(vendor_id) REFERENCES Vendor(vendor_id) ON DELETE CASCADE
+        );
+    """)
+
+
+
 
     conn.commit()
     conn.close()

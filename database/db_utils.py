@@ -118,7 +118,7 @@ def get_all_tenders():
 
     # display all tenders
     if group_by == "None":
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(df, use_container_width=True, hide_index=True)
         return
 
     # filter for locations
@@ -126,7 +126,7 @@ def get_all_tenders():
         for location, group_df in df.groupby("Location", dropna=False):
 
             st.write(f" **Location:** {location}" if location else "Not Applicable")
-            st.dataframe(group_df.reset_index(drop=True), use_container_width=True)
+            st.dataframe(group_df.reset_index(drop=True), use_container_width=True, hide_index=True)
 
 
 
@@ -135,7 +135,7 @@ def get_all_tenders():
         for status, group_df in df.groupby("Status", dropna=False):
 
             st.write(f" **Status:** {status}" if status else "Not Applicable")
-            st.dataframe(group_df.reset_index(drop=True), use_container_width=True)
+            st.dataframe(group_df.reset_index(drop=True), use_container_width=True, hide_index=True)
 
 # ----------------------------------------------------------
 
@@ -543,3 +543,212 @@ def award():
             st.error(f"Error while awarding tender: {e}")
 
     conn.close()
+
+
+### VENDOR HELPER FUNCTIONS ###
+
+def get_vendor_by_email(email):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT vendor_id, name, email, phone, address FROM Vendor WHERE email = ?", (email,)
+    )
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {"vendor_id": row[0], "name": row[1], "email": row[2], "phone": row[3], "address": row[4]}
+
+
+def get_open_tenders(location=None, search=None):
+    conn = get_connection()
+    query = """
+        SELECT tender_id, tender_ref_no, title, description, location,
+               opening_date, closing_date, publishing_date
+        FROM Tender
+        WHERE status = 'Open'
+    """
+    params = []
+    if location:
+        query += " AND location = ?"
+        params.append(location)
+    if search:
+        query += " AND (title LIKE ? OR description LIKE ? OR tender_ref_no LIKE ?)"
+        s = f"%{search}%"
+        params.extend([s, s, s])
+    query += " ORDER BY publishing_date DESC"
+    df = pd.read_sql_query(query, conn, params=params)
+    conn.close()
+    return df
+
+
+def get_tenders_locations():
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT DISTINCT location FROM Tender WHERE location IS NOT NULL AND location != ''")
+    rows = [r[0] for r in cur.fetchall()]
+    conn.close()
+    return rows
+
+
+def get_tender_by_ref(ref):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT tender_id, tender_ref_no, title, description, location,
+               opening_date, closing_date, publishing_date
+        FROM Tender WHERE tender_ref_no = ?
+    """, (ref,))
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        return None
+    cols = ["tender_id", "tender_ref_no", "title", "description", "location",
+            "opening_date", "closing_date", "publishing_date"]
+    return dict(zip(cols, row))
+
+
+def submit_bid(vendor_id, tender_ref_no, technical_spec, financial_spec):
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT tender_id, status FROM Tender WHERE tender_ref_no = ?", (tender_ref_no,))
+        r = cur.fetchone()
+        if not r:
+            return False, "Tender not found."
+        tender_id, status = r
+        if status != "Open":
+            return False, "Tender is not open for bidding."
+
+        # duplicate check
+        cur.execute("SELECT 1 FROM Bid WHERE vendor_id = ? AND tender_id = ?", (vendor_id, tender_id))
+        if cur.fetchone():
+            return False, "You have already submitted a bid for this tender."
+
+        submission_date = datetime.now().strftime("%Y-%m-%d")
+        cur.execute("""
+            INSERT INTO Bid (vendor_id, tender_id, submission_date, technical_spec, financial_spec, status, opened_at)
+            VALUES (?, ?, ?, ?, ?, 'Submitted', datetime('now'))
+        """, (vendor_id, tender_id, submission_date, technical_spec, financial_spec))
+        conn.commit()
+        return True, "Bid submitted successfully."
+    except Exception as e:
+        return False, f"DB error: {e}"
+    finally:
+        conn.close()
+
+
+def delete_bid(tender_id, vendor_id):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        DELETE FROM Bid
+        WHERE tender_id = ? AND vendor_id = ? AND status = 'Submitted'
+    """, (tender_id, vendor_id))
+    conn.commit()
+    conn.close()
+
+
+def update_bid(vendor_id, tender_id, new_tech, new_fin):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        UPDATE Bid
+        SET technical_spec = ?, financial_spec = ?, submission_date = DATE('now')
+        WHERE vendor_id = ? AND tender_id = ? AND status = 'Submitted'
+    """, (new_tech, new_fin, vendor_id, tender_id))
+    conn.commit()
+    conn.close()
+
+
+def get_bids_for_vendor(email):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT 
+            b.tender_id,
+            t.tender_ref_no,
+            t.title,
+            t.location,
+            b.submission_date,
+            b.technical_spec,
+            b.financial_spec,
+            b.status,
+            b.remarks
+        FROM Bid b
+        JOIN Tender t ON b.tender_id = t.tender_id
+        JOIN Vendor v ON b.vendor_id = v.vendor_id
+        WHERE v.email = ?
+        ORDER BY b.submission_date DESC
+    """, (email,))
+    rows = cur.fetchall()
+    conn.close()
+
+    df = pd.DataFrame(rows, columns=[
+        "tender_id",
+        "tender_ref_no",
+        "title",
+        "location",
+        "submission_date",
+        "technical_spec",
+        "financial_spec",
+        "status",
+        "remarks"
+    ])
+    return df
+
+def create_notification(vendor_id, title, message):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO Notification (vendor_id, title, message) VALUES (?, ?, ?)
+    """, (vendor_id, title, message))
+    conn.commit()
+    conn.close()
+
+
+def get_notifications(vendor_email):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT n.notification_id, n.title, n.message, n.timestamp, n.is_read
+        FROM Notification n
+        JOIN Vendor v ON v.vendor_id = n.vendor_id
+        WHERE v.email = ?
+        ORDER BY n.timestamp DESC
+    """, (vendor_email,))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def get_unread_notifications_count(vendor_email):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT COUNT(*) FROM Notification n
+        JOIN Vendor v ON v.vendor_id = n.vendor_id
+        WHERE v.email = ? AND n.is_read = 0
+    """, (vendor_email,))
+    c = cur.fetchone()[0]
+    conn.close()
+    return c
+
+
+def mark_notifications_read(vendor_email, ids=None):
+    conn = get_connection()
+    cur = conn.cursor()
+    if ids:
+        q = "UPDATE Notification SET is_read = 1 WHERE notification_id IN ({seq})".format(
+            seq=",".join(["?"] * len(ids))
+        )
+        cur.execute(q, ids)
+    else:
+        cur.execute("""
+            UPDATE Notification SET is_read = 1
+            WHERE vendor_id = (SELECT vendor_id FROM Vendor WHERE email = ?)
+        """, (vendor_email,))
+    conn.commit()
+    conn.close()
+
+
