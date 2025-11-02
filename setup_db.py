@@ -74,47 +74,29 @@ def setup_database():
         
     """)
 
-    cur.execute(""" CREATE
-    TABLE IF NOT EXISTS
-    BidLog(vendor_id INTEGER NOT NULL,
-    tender_id INTEGER NOT NULL,
-    submission_date DATE,
-    technical_spec TEXT,
-    financial_spec TEXT,
-    status TEXT
-    CHECK(status
-    IN('Submitted', 'Under Review', 'Accepted', 'Rejected')) DEFAULT 'Submitted',
-    opened_at DATETIME,
-    technical_score REAL,
-    financial_score REAL, final_score REAL,
-    remarks TEXT,
-    closed_timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    is_winner TEXT
-    CHECK(is_winner
-    IN('Yes', 'No')) DEFAULT
-    'No',
-    PRIMARY
-    KEY(vendor_id, tender_id),
-    FOREIGN
-    KEY(vendor_id)
-    REFERENCES
-    Vendor(vendor_id) ON
-    DELETE
-    CASCADE
-    ON
-    UPDATE
-    CASCADE,
-    FOREIGN
-    KEY(tender_id)
-    REFERENCES
-    Tender(tender_id)
-    ON
-    DELETE
-    CASCADE
-    ON
-    UPDATE
-    CASCADE
-    );
+    cur.execute(""" 
+        CREATE TABLE IF NOT EXISTS BidLog (
+            vendor_id INTEGER NOT NULL,
+            tender_id INTEGER NOT NULL,
+            submission_date DATE,
+            technical_spec TEXT,
+            financial_spec TEXT,
+            status TEXT CHECK(status IN('Submitted', 'Under Review', 'Accepted', 'Rejected')) DEFAULT 'Submitted',
+            opened_at DATETIME,
+            technical_score REAL,
+            financial_score REAL, final_score REAL,
+            remarks TEXT,
+            closed_timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            is_winner TEXT CHECK(is_winner IN('Yes', 'No')) DEFAULT 'No',
+            PRIMARY KEY (vendor_id, tender_id),
+            FOREIGN KEY (vendor_id) 
+                REFERENCES Vendor(vendor_id)
+                ON DELETE CASCADE ON UPDATE CASCADE,
+            FOREIGN KEY (tender_id)
+                REFERENCES Tender(tender_id)
+                ON DELETE CASCADE ON UPDATE CASCADE
+        );
+    
     """)
 
 
