@@ -57,7 +57,7 @@ def manage_orgs():
     )
 
     if option == "View All Organisations":
-        orgs = get_all_vendors()
+        orgs = get_all_orgs()
         if not orgs.empty:
             st.subheader("Registered Organisations")
             st.dataframe(orgs, use_container_width=True, hide_index=True)
