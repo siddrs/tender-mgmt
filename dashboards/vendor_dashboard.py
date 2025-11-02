@@ -14,7 +14,7 @@ def vendor_login():
     if st.session_state.vendor_logged_in:
         show_vendor_dashboard()
 
-    # Shoe login and signup tabs if not logged in
+    # Show login and signup tabs if not logged in
     else: 
         tab1, tab2 = st.tabs(["Login", "Signup"])
 

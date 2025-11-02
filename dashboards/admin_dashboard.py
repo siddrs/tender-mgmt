@@ -1,28 +1,7 @@
-import streamlit as st 
+import streamlit as st
 import pandas as pd
 from database.db_utils import *
 
-# to do
-# award winner
-# NOTE:
-# When implementing the award functionality, please make sure to notify the winning vendor
-# and all other participants.
-#
-# Use the helper function: 
-#     create_notification(vendor_id, title, message)
-#
-# Example:
-#     create_notification(
-#         winner_id,
-#         "Tender Awarded",
-#         f"Congratulations! You have been awarded Tender {selected_tender_ref_id}."
-#     )
-#
-# You can fetch all other bidders for the same tender with get_bidders_for_tender(selected_tender_ref_id)
-# and send them a "Not Awarded" notification.
-
-
-# admin login fuction
 def admin_login():
     correct_password = "admin123"  # hardcoded admin password
 
@@ -47,19 +26,15 @@ def admin_login():
         show_admin_dashboard()
 
 
-
-
 def show_admin_dashboard():
     # st.write('checking')
     st.title(f"**Admin Dashboard**")
-    # st.sidebar.title(f"**Admin Dashboard**")
-    # fxn = st.sidebar.radio("Select:", ["Manage Tenders", "Manage Vendors", "Manage Bids", "Log Out"])
 
 
-    tab1, tab2, tab3, tab4 = st.tabs([f"**Manage Tenders**", f"**Manage Vendors**", f"**Manage Bids**", f"**Log Out**"])
+    tab1, tab2, tab3, tab4 = st.tabs([f"**Manage Organisations**", f"**Manage Vendors**", f"**Manage Bids**", f"**Log Out**"])
 
     with tab1:
-        manage_tenders()
+        manage_orgs()
     with tab2:
         manage_vendors()
     with tab3:
@@ -71,26 +46,31 @@ def show_admin_dashboard():
             st.rerun()
 
 
-def manage_bids():
+def manage_orgs():
     option = st.selectbox(
         "Select an action:",
         [
             "— Select —",
-            "View and Evaluate a Bid",
-            "Award Bids",
-            "View Past Logs",
+            "View All Organisations",
+            "Delete Organisation",
         ]
     )
 
+    if option == "View All Organisations":
+        orgs = get_all_vendors()
+        if not orgs.empty:
+            st.subheader("Registered Organisations")
+            st.dataframe(orgs, use_container_width=True, hide_index=True)
+        else:
+            st.info("No organisations found.")
+    elif option == "Delete Organisation":
+        st.subheader("Delete Organisation")
+        email = st.text_input("Enter Organisation Email to Delete")
 
-    if option == "View and Evaluate a Bid":
-        vievaluate_bids()
-    elif option == "Award Bids":
-        award()
-        #pass
-    elif option == "View Past Logs":
-        view_logs()
-
+        if st.button("Delete Vendor"):
+            delete_org_by_email(email)
+            st.warning(f"Organisation with email '{email}' has been deleted (if existed).")
+        # pass
 
 def manage_vendors():
     option = st.selectbox(
@@ -132,108 +112,17 @@ def manage_vendors():
             st.warning(f"Vendor with email '{email}' has been deleted (if existed).")
 
 
-
-def manage_tenders():
+def manage_bids():
     option = st.selectbox(
         "Select an action:",
         [
             "— Select —",
-            "Create Tender",
-            "View All Tenders",
-            "Delete Tenders",
-            "Edit Tenders",
+            "View All Bids",
+            "View Logs",
         ]
     )
 
-    if option == "Create Tender":
-        create_tender()
-
-    elif option == "View All Tenders":
-        get_all_tenders()
-
-    elif option == "Delete Tenders":
-        st.subheader("Delete Tender")
-        delete_tender()
-
-    elif option == "Edit Tenders":
-        st.subheader("Update Tender Details")
-        edit()
-
-
-
-
-
-
-
-
-
-    # checking purposes only
-    #conn = get_connection()
-    # cur = conn.cursor()
-    # cur.execute("""
-    # SELECT * FROM Bid
-    # """)
-    # rows = cur.fetchall()
-    # conn.close()
-    #
-    # if not rows:
-    #     st.warning("Oops!")
-    #     return
-    #
-    # df = pd.DataFrame(
-    #     rows
-    # )
-    # st.dataframe(df, use_container_width=True)
-
-
-
-
-
-
-def create_tender():
-    st.subheader("Create New Tender")
-
-    tender_ref_no = st.text_input("Tender Reference Number")
-    title = st.text_input("Title")
-    description = st.text_area("Description")
-    location = st.text_input("Location")
-
-
-    opening_date = st.date_input("Opening Date")
-    closing_date = st.date_input("Closing Date")
-
-    if st.button("Create Tender"):
-        opening_date_str = opening_date.strftime("%Y-%m-%d")
-        closing_date_str = closing_date.strftime("%Y-%m-%d")
-
-        add_tender(
-            tender_ref_no,
-            title,
-            description,
-            location,
-            opening_date_str,
-            closing_date_str
-        )
-
-        st.success("Tender created successfully!")
-
-
-
-
-
-
- # # select box for all functionalities ek chhat ke neeche
- #    option = st.selectbox(
- #        "Select an action:",
- #        [
- #            "— Select —",
- #            "View All Vendors",
- #            "Add New Vendor",
- #            "Delete a Vendor",
- #            "Create Tender",
- #            "View All Tenders",
- #            "Delete Tenders",
- #            "Edit Tenders",
- #            "Logout"
- #        ]
- #    )
+    if option == "View All Bids":
+        pass
+    if option == "View Logs":
+        pass

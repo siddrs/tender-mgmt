@@ -6,7 +6,7 @@ import sqlite3
 # instead replace the .db file with another one, and old schema with new one (yes, the new file will be empty and not have the previous entries)
 
 def setup_database():
-    conn = sqlite3.connect("tendermanagement.db")
+    conn = sqlite3.connect("tender___management.db")
     cur = conn.cursor()
 
     # Vendors table
@@ -22,21 +22,32 @@ def setup_database():
         """)
 
     cur.execute("""
-        CREATE TABLE IF NOT EXISTS Tender ( 
-            tender_id INTEGER PRIMARY KEY AUTOINCREMENT, 
-            tender_ref_no TEXT UNIQUE, 
-            title TEXT NOT NULL, 
-            description TEXT, 
-            location TEXT, 
-            status TEXT CHECK(status IN ('Open','Closed','Awarded')) DEFAULT 'Open', 
-            opening_date DATE, 
-            closing_date DATE, 
-            publishing_date DATE,
-            winner_vendor_id INTEGER,
-            FOREIGN KEY (winner_vendor_id) 
-                REFERENCES Vendor(vendor_id) 
-                ON DELETE SET NULL ON UPDATE CASCADE
-        );
+                CREATE TABLE IF NOT EXISTS Organisation (
+                    org_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    email TEXT UNIQUE,
+                    phone TEXT,
+                    address TEXT,
+                    password TEXT NOT NULL
+                )
+            """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS Tender ( 
+        tender_id INTEGER PRIMARY KEY AUTOINCREMENT, 
+        tender_ref_no TEXT UNIQUE, 
+        org_id INTEGER NOT NULL,
+        title TEXT NOT NULL, 
+        description TEXT, 
+        location TEXT, 
+        status TEXT CHECK(status IN ('Open','Closed','Awarded')) DEFAULT 'Open', 
+        opening_date DATE, 
+        closing_date DATE, 
+        publishing_date DATE,
+        winner_vendor_id INTEGER,
+        FOREIGN KEY (org_id) REFERENCES Organisation(org_id) ON DELETE CASCADE,
+        FOREIGN KEY (winner_vendor_id) REFERENCES Vendor(vendor_id) ON DELETE SET NULL ON UPDATE CASCADE
+    );
     """)
 
     cur.execute("""
