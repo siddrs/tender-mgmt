@@ -509,9 +509,14 @@ def update_bid(vendor_id, tender_id, new_tech, new_fin):
 
 
 def get_bids_for_vendor(email):
+    """
+    Return both active bids (from Bid) and historical bids (from BidLog).
+    Ensures vendor-email lookup is correct and returns a `record_type` column.
+    """
     conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("""
+    try:
+        # Active bids
+        active_sql = """
         SELECT 
             b.tender_id,
             t.tender_ref_no,
@@ -521,28 +526,62 @@ def get_bids_for_vendor(email):
             b.technical_spec,
             b.financial_spec,
             b.status,
-            b.remarks
+            b.remarks,
+            t.status AS tender_status,
+            NULL AS is_winner
         FROM Bid b
         JOIN Tender t ON b.tender_id = t.tender_id
         JOIN Vendor v ON b.vendor_id = v.vendor_id
         WHERE v.email = ?
-        ORDER BY b.submission_date DESC
-    """, (email,))
-    rows = cur.fetchall()
-    conn.close()
+        """
 
-    df = pd.DataFrame(rows, columns=[
-        "tender_id",
-        "tender_ref_no",
-        "title",
-        "location",
-        "submission_date",
-        "technical_spec",
-        "financial_spec",
-        "status",
-        "remarks"
-    ])
-    return df
+        # Historical bids from BidLog
+        closed_sql = """
+        SELECT
+            l.tender_id,
+            t.tender_ref_no,
+            t.title,
+            t.location,
+            l.submission_date,
+            l.technical_spec,
+            l.financial_spec,
+            l.status,
+            l.remarks,
+            t.status AS tender_status,
+            l.is_winner
+        FROM BidLog l
+        JOIN Tender t ON l.tender_id = t.tender_id
+        JOIN Vendor v ON l.vendor_id = v.vendor_id
+        WHERE v.email = ?
+        """
+
+        df_active = pd.read_sql_query(active_sql, conn, params=(email,))
+        df_closed = pd.read_sql_query(closed_sql, conn, params=(email,))
+
+        if not df_active.empty:
+            df_active["record_type"] = "Active"
+        if not df_closed.empty:
+            df_closed["record_type"] = "Log"
+
+        cols = ["tender_id","tender_ref_no","title","location","submission_date",
+                "technical_spec","financial_spec","status","remarks","tender_status","is_winner","record_type"]
+        for df in (df_active, df_closed):
+            for c in cols:
+                if c not in df.columns:
+                    df[c] = None
+
+        combined = pd.concat([df_active[cols], df_closed[cols]], ignore_index=True)
+        if combined.empty:
+            return pd.DataFrame(columns=cols)
+
+        combined["submission_date"] = pd.to_datetime(combined["submission_date"], errors="coerce")
+        combined.sort_values(by="submission_date", ascending=False, inplace=True)
+        # friendly winner label
+        combined["is_winner"] = combined["is_winner"].fillna("No")
+        combined["is_winner"] = combined["is_winner"].replace({1: "Yes", 0: "No", "1": "Yes", "0": "No", "Yes":"Yes","No":"No"})
+        return combined.reset_index(drop=True)
+    finally:
+        conn.close()
 
 def create_notification(vendor_id, title, message):
     conn = get_connection()
@@ -711,6 +750,9 @@ def award():
         try:
             closed_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+            # remember bidder ids to notify later
+            bidder_ids = [int(r['vendor_id']) for _, r in bids.iterrows()]
+
             for _, row in bids.iterrows():
                 cur.execute("""
                     INSERT INTO BidLog (
@@ -737,8 +779,25 @@ def award():
 
             cur.execute("DELETE FROM Bid WHERE tender_id = ?", (tender_id,))
 
+            # set winner and mark tender as Awarded
+            cur.execute("UPDATE Tender SET status = 'Awarded', winner_vendor_id = ? WHERE tender_id = ?", (winner_id, tender_id))
 
-            cur.execute("UPDATE Tender SET status = 'Closed' WHERE tender_id = ?", (tender_id,))
+            # send notifications
+            try:
+                # winner notification
+                cur.execute(
+                    "INSERT INTO Notification (vendor_id, title, message) VALUES (?, ?, ?)",
+                    (winner_id, f":green[**TENDER AWARDED**]", f":green[Congratulations. Tender: **{selected_ref}** awarded to your bid.]")
+                )
+                # notify other bidders
+                for vid in bidder_ids:
+                    if vid != winner_id:
+                        cur.execute(
+                            "INSERT INTO Notification (vendor_id, title, message) VALUES (?, ?, ?)",
+                            (vid, f":red[**TENDER RESULT**]", f":red[Your bid for the tender: **{selected_ref}** was not selcted. Thank you for your submission.]")
+                        )
+            except Exception:
+                pass
 
             conn.commit()
             st.success(f"Tender {selected_ref} awarded successfully and moved to BidLog.")
