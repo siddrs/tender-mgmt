@@ -125,7 +125,7 @@ def manage_bids():
     if option == "View All Bids":
         view_all_bids()
     elif option == "View Logs":
-        pass
+        view_logs()
 
 
 def view_all_bids():

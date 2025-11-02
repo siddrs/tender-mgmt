@@ -680,7 +680,8 @@ def mark_notifications_read(vendor_email, ids=None):
 
 # --------------------------------------
 
-def view_logs(org_id):
+
+def view_logs():
     st.header("View Awarded Tender Logs")
 
     conn = get_connection()
@@ -724,12 +725,7 @@ def view_logs(org_id):
                      use_container_width=True)
 
 
-# ---------------------------------------------------------------------------------
-
-import streamlit as st
-import pandas as pd
-from datetime import datetime
-from database.db_utils import get_connection
+# --------------------------
 
 def award():
     st.header("Award Tender")
