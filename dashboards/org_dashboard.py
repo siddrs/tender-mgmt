@@ -2,27 +2,6 @@ import streamlit as st
 import pandas as pd
 from database.db_utils import *
 
-# to do
-# award winner
-# NOTE:
-# When implementing the award functionality, please make sure to notify the winning vendor
-# and all other participants.
-#
-# Use the helper function:
-#     create_notification(vendor_id, title, message)
-#
-# Example:
-#     create_notification(
-#         winner_id,
-#         "Tender Awarded",
-#         f"Congratulations! You have been awarded Tender {selected_tender_ref_id}."
-#     )
-#
-# You can fetch all other bidders for the same tender with get_bidders_for_tender(selected_tender_ref_id)
-# and send them a "Not Awarded" notification.
-
-
-
 def org_login():
 
     if "org_logged_in" not in st.session_state:
@@ -30,8 +9,7 @@ def org_login():
     if "org_email" not in st.session_state:
         st.session_state.org_email = None
 
-
-    if st.session_state.admin_logged_in:
+    if st.session_state.org_logged_in:
         show_org_dashboard()
         return
 
@@ -54,8 +32,8 @@ def org_login():
             conn.close()
 
             if org and password == org[2]:
-                st.session_state.admin_logged_in = True
-                st.session_state.admin_email = email
+                st.session_state.org_logged_in = True
+                st.session_state.org_email = email
                 st.session_state['org_id'] = org[0]
                 st.session_state['org_name'] = org[1]
                 st.success(f"Showing dashboard for {org[1]}!")
@@ -101,6 +79,9 @@ def show_org_dashboard():
     # st.sidebar.title(f"**Admin Dashboard**")
     # fxn = st.sidebar.radio("Select:", ["Manage Tenders", "Manage Vendors", "Manage Bids", "Log Out"])
 
+    org_name = st.session_state.get("org_name")
+    org_email = st.session_state.get("org_email")
+    st.success(f"Logged in as: {org_email}")
 
     tab1, tab2, tab3, tab4 = st.tabs([f"**Manage Tenders**", f"**Manage Vendors**", f"**Manage Bids**", f"**Log Out**"])
 
@@ -112,7 +93,7 @@ def show_org_dashboard():
         manage_bids()
     with tab4:
         if st.button("Log Out"):
-            st.session_state.admin_logged_in = False
+            st.session_state.org_logged_in = False
             st.success("Logged out successfully.")
             st.rerun()
 

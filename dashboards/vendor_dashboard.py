@@ -108,8 +108,8 @@ def show_vendor_dashboard():
     vendor = get_vendor_by_email(st.session_state.vendor_email)
     unread = get_unread_notifications_count(st.session_state.vendor_email)
 
-    st.success(f"Logged in as: {vendor['email']}")
     st.title("Vendor Dashboard")
+    st.success(f"Logged in as: {vendor['email']}")
 
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
         f"Open Tenders",

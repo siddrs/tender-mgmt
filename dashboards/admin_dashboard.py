@@ -123,6 +123,165 @@ def manage_bids():
     )
 
     if option == "View All Bids":
+        view_all_bids()
+    elif option == "View Logs":
         pass
-    if option == "View Logs":
-        pass
+
+
+def view_all_bids():
+    st.subheader("View All Bids")
+
+    conn = get_connection()
+
+    # org selector
+    orgs = pd.read_sql_query("SELECT org_id, name FROM Organisation ORDER BY name", conn)
+    if orgs.empty:
+        st.info("No organisations found.")
+        conn.close()
+        return
+
+    org_options = ["All"] + orgs["name"].tolist()
+    selected_org = st.selectbox("Organisation", org_options, key="admin_filter_org")
+
+    org_id = None
+    if selected_org != "All":
+        org_id = int(orgs.loc[orgs["name"] == selected_org, "org_id"].values[0])
+
+    # tender selector
+    if org_id:
+        tenders_q = "SELECT tender_id, tender_ref_no, title FROM Tender WHERE org_id = ? ORDER BY publishing_date DESC"
+        tenders = pd.read_sql_query(tenders_q, conn, params=(org_id,))
+    else:
+        tenders = pd.read_sql_query("SELECT tender_id, tender_ref_no, title FROM Tender ORDER BY publishing_date DESC", conn)
+
+    tender_opts = ["All"] + (tenders["tender_ref_no"].tolist() if not tenders.empty else [])
+    selected_tender_ref = st.selectbox(
+        "Tender",
+        tender_opts,
+        key="admin_filter_tender",
+        format_func=lambda r: r if r == "All" else f"{r} — {tenders.loc[tenders['tender_ref_no']==r,'title'].values[0]}" if r in tenders["tender_ref_no"].values else r
+    )
+
+    status_vals = ["All", "Submitted", "Under Review", "Accepted", "Rejected"]
+    selected_status = st.selectbox("Bid Status", status_vals, index=0, key="admin_filter_status")
+
+    include_logs = st.checkbox("Include historical bids (BidLog)", value=True)
+
+    params = []
+    sql_active = """
+        SELECT
+            b.vendor_id,
+            v.name AS vendor_name,
+            v.email AS vendor_email,
+            b.tender_id,
+            t.tender_ref_no,
+            t.title AS tender_title,
+            o.org_id,
+            o.name AS organisation,
+            b.submission_date,
+            b.technical_spec,
+            b.financial_spec,
+            b.status,
+            b.technical_score,
+            b.financial_score,
+            b.final_score,
+            b.remarks
+        FROM Bid b
+        JOIN Vendor v ON b.vendor_id = v.vendor_id
+        JOIN Tender t ON b.tender_id = t.tender_id
+        LEFT JOIN Organisation o ON t.org_id = o.org_id
+        WHERE 1=1
+    """
+
+    if org_id:
+        sql_active += " AND o.org_id = ?"
+        params.append(org_id)
+
+    if selected_tender_ref != "All":
+        sql_active += " AND t.tender_ref_no = ?"
+        params.append(selected_tender_ref)
+
+    active_params = list(params)
+    if selected_status != "All":
+        sql_active += " AND b.status = ?"
+        active_params.append(selected_status)
+
+    sql_active += " ORDER BY t.tender_ref_no, b.submission_date DESC"
+    df_active = pd.read_sql_query(sql_active, conn, params=active_params)
+
+    df_list = []
+    if df_active is not None and not df_active.empty:
+        df_active["record_source"] = "Active"
+        df_active["is_winner"] = None
+        df_list.append(df_active)
+
+    if include_logs:
+        params_log = []
+        sql_log = """
+            SELECT
+                l.vendor_id,
+                v.name AS vendor_name,
+                v.email AS vendor_email,
+                l.tender_id,
+                t.tender_ref_no,
+                t.title AS tender_title,
+                o.org_id,
+                o.name AS organisation,
+                l.submission_date,
+                l.technical_spec,
+                l.financial_spec,
+                l.status,
+                l.technical_score,
+                l.financial_score,
+                l.final_score,
+                l.remarks,
+                l.is_winner
+            FROM BidLog l
+            JOIN Vendor v ON l.vendor_id = v.vendor_id
+            JOIN Tender t ON l.tender_id = t.tender_id
+            LEFT JOIN Organisation o ON t.org_id = o.org_id
+            WHERE 1=1
+        """
+        if org_id:
+            sql_log += " AND o.org_id = ?"
+            params_log.append(org_id)
+        if selected_tender_ref != "All":
+            sql_log += " AND t.tender_ref_no = ?"
+            params_log.append(selected_tender_ref)
+        if selected_status != "All":
+            sql_log += " AND l.status = ?"
+            params_log.append(selected_status)
+
+        sql_log += " ORDER BY t.tender_ref_no, l.submission_date DESC"
+        df_log = pd.read_sql_query(sql_log, conn, params=params_log)
+        if df_log is not None and not df_log.empty:
+            df_log["record_source"] = "Log"
+            # normalize is_winner to Yes/No strings
+            df_log["is_winner"] = df_log["is_winner"].fillna("No").replace({1: "Yes", 0: "No", "1": "Yes", "0": "No"})
+            df_list.append(df_log)
+
+    if not df_list:
+        st.info("No bids found for the selected filters.")
+        conn.close()
+        return
+
+    df = pd.concat(df_list, ignore_index=True, sort=False)
+
+    display_cols = [
+        "organisation", "tender_ref_no", "tender_title",
+        "vendor_name", "vendor_email", "submission_date",
+        "record_source", "status", "is_winner", "technical_score", "financial_score", "final_score",
+        "technical_spec", "financial_spec", "remarks"
+    ]
+    display_cols = [c for c in display_cols if c in df.columns]
+    st.dataframe(df[display_cols].reset_index(drop=True), use_container_width=True)
+
+    # CSV download
+    csv = df.to_csv(index=False)
+    st.download_button("Download CSV", csv, file_name="bids_export.csv", mime="text/csv")
+
+    conn.close()
+
+
+
+    
