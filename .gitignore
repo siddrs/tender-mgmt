@@ -3,4 +3,5 @@
 __pycache__/
 *.pyc 
 .python-version
-vendor_dashboard_backup.pydatabase.db
+vendor_dashboard_backup.py
+database.db
