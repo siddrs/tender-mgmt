@@ -407,32 +407,56 @@ def get_admin_by_email(email):
 
 # -------------------------------------------------------------------------
 
-def get_open_tenders(location=None, search=None):
+def get_open_tenders(location=None, search=None, org_id=None):
+    """
+    Optional filters:
+      - location: exact match
+      - search: substring on title, description or tender_ref_no
+      - org_id: integer organisation id to limit results to one organisation
+    """
     conn = get_connection()
     query = """
-        SELECT tender_id, tender_ref_no, title, description, location,
-               opening_date, closing_date, publishing_date
-        FROM Tender
-        WHERE status = 'Open'
+        SELECT
+            t.tender_id,
+            t.tender_ref_no,
+            t.title,
+            t.description,
+            t.location,
+            t.opening_date,
+            t.closing_date,
+            t.publishing_date,
+            t.org_id,
+            o.name AS org_name
+        FROM Tender t
+        LEFT JOIN Organisation o ON t.org_id = o.org_id
+        WHERE t.status = 'Open'
     """
     params = []
+    if org_id:
+        query += " AND t.org_id = ?"
+        params.append(org_id)
     if location:
-        query += " AND location = ?"
+        query += " AND t.location = ?"
         params.append(location)
     if search:
-        query += " AND (title LIKE ? OR description LIKE ? OR tender_ref_no LIKE ?)"
+        query += " AND (t.title LIKE ? OR t.description LIKE ? OR t.tender_ref_no LIKE ?)"
         s = f"%{search}%"
         params.extend([s, s, s])
-    query += " ORDER BY publishing_date DESC"
+
+    query += " ORDER BY t.publishing_date DESC"
+
     df = pd.read_sql_query(query, conn, params=params)
     conn.close()
     return df
 
 
-def get_tenders_locations():
+def get_tenders_locations(org_id=None):
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("SELECT DISTINCT location FROM Tender WHERE location IS NOT NULL AND location != ''")
+    if org_id:
+        cur.execute("SELECT DISTINCT location FROM Tender WHERE location IS NOT NULL AND location != '' AND org_id = ?", (org_id,))
+    else:
+        cur.execute("SELECT DISTINCT location FROM Tender WHERE location IS NOT NULL AND location != ''")
     rows = [r[0] for r in cur.fetchall()]
     conn.close()
     return rows
@@ -442,16 +466,18 @@ def get_tender_by_ref(ref):
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("""
-        SELECT tender_id, tender_ref_no, title, description, location,
-               opening_date, closing_date, publishing_date
-        FROM Tender WHERE tender_ref_no = ?
+        SELECT t.tender_id, t.tender_ref_no, t.title, t.description, t.location,
+               t.opening_date, t.closing_date, t.publishing_date, t.org_id, o.name
+        FROM Tender t
+        LEFT JOIN Organisation o ON t.org_id = o.org_id
+        WHERE t.tender_ref_no = ?
     """, (ref,))
     row = cur.fetchone()
     conn.close()
     if not row:
         return None
     cols = ["tender_id", "tender_ref_no", "title", "description", "location",
-            "opening_date", "closing_date", "publishing_date"]
+            "opening_date", "closing_date", "publishing_date", "org_id", "org_name"]
     return dict(zip(cols, row))
 
 
@@ -511,46 +537,52 @@ def update_bid(vendor_id, tender_id, new_tech, new_fin):
 def get_bids_for_vendor(email):
     """
     Return both active bids (from Bid) and historical bids (from BidLog).
-    Ensures vendor-email lookup is correct and returns a `record_type` column.
+    Adds organisation and vendor name fields and returns a `record_type` column.
     """
     conn = get_connection()
     try:
-        # Active bids
         active_sql = """
         SELECT 
             b.tender_id,
             t.tender_ref_no,
             t.title,
             t.location,
+            t.org_id,
+            o.name AS org_name,
             b.submission_date,
             b.technical_spec,
             b.financial_spec,
             b.status,
             b.remarks,
             t.status AS tender_status,
-            NULL AS is_winner
+            NULL AS is_winner,
+            v.name AS vendor_name
         FROM Bid b
         JOIN Tender t ON b.tender_id = t.tender_id
+        LEFT JOIN Organisation o ON t.org_id = o.org_id
         JOIN Vendor v ON b.vendor_id = v.vendor_id
         WHERE v.email = ?
         """
 
-        # Historical bids from BidLog
         closed_sql = """
         SELECT
             l.tender_id,
             t.tender_ref_no,
             t.title,
             t.location,
+            t.org_id,
+            o.name AS org_name,
             l.submission_date,
             l.technical_spec,
             l.financial_spec,
             l.status,
             l.remarks,
             t.status AS tender_status,
-            l.is_winner
+            l.is_winner,
+            v.name AS vendor_name
         FROM BidLog l
         JOIN Tender t ON l.tender_id = t.tender_id
+        LEFT JOIN Organisation o ON t.org_id = o.org_id
         JOIN Vendor v ON l.vendor_id = v.vendor_id
         WHERE v.email = ?
         """
@@ -563,8 +595,13 @@ def get_bids_for_vendor(email):
         if not df_closed.empty:
             df_closed["record_type"] = "Log"
 
-        cols = ["tender_id","tender_ref_no","title","location","submission_date",
-                "technical_spec","financial_spec","status","remarks","tender_status","is_winner","record_type"]
+        cols = [
+            "tender_id", "tender_ref_no", "title", "location", "org_id", "org_name",
+            "submission_date", "technical_spec", "financial_spec", "status", "remarks",
+            "tender_status", "is_winner", "vendor_name", "record_type"
+        ]
+
+        # ensure all columns exist in both frames
         for df in (df_active, df_closed):
             for c in cols:
                 if c not in df.columns:
@@ -576,12 +613,16 @@ def get_bids_for_vendor(email):
 
         combined["submission_date"] = pd.to_datetime(combined["submission_date"], errors="coerce")
         combined.sort_values(by="submission_date", ascending=False, inplace=True)
-        # friendly winner label
+
+        # normalize winner flag to Yes/No strings
         combined["is_winner"] = combined["is_winner"].fillna("No")
         combined["is_winner"] = combined["is_winner"].replace({1: "Yes", 0: "No", "1": "Yes", "0": "No", "Yes":"Yes","No":"No"})
+
+        # reset index and return
         return combined.reset_index(drop=True)
     finally:
         conn.close()
+
 
 def create_notification(vendor_id, title, message):
     conn = get_connection()
@@ -750,10 +791,12 @@ def award():
         try:
             closed_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-            # remember bidder ids to notify later
-            bidder_ids = [int(r['vendor_id']) for _, r in bids.iterrows()]
-
+            # update bid status -> Accepted / Rejected
             for _, row in bids.iterrows():
+                vid = int(row['vendor_id'])
+                is_winner_flag = 'Yes' if vid == winner_id else 'No'
+                status_to_write = 'Accepted' if vid == winner_id else 'Rejected'
+
                 cur.execute("""
                     INSERT INTO BidLog (
                         vendor_id, tender_id, submission_date, technical_spec, financial_spec,
@@ -763,44 +806,45 @@ def award():
                 """, (
                     row['vendor_id'],
                     row['tender_id'],
-                    row['submission_date'],
-                    row['technical_spec'],
-                    row['financial_spec'],
-                    row['status'],
-                    row['opened_at'],
-                    row['technical_score'],
-                    row['financial_score'],
-                    row['final_score'],
-                    row['remarks'],
+                    row.get('submission_date'),
+                    row.get('technical_spec'),
+                    row.get('financial_spec'),
+                    status_to_write,
+                    row.get('opened_at'),
+                    row.get('technical_score'),
+                    row.get('financial_score'),
+                    row.get('final_score'),
+                    row.get('remarks'),
                     closed_time,
-                    'Yes' if row['vendor_id'] == winner_id else 'No'
+                    is_winner_flag
                 ))
 
-
+            # remove active bids
             cur.execute("DELETE FROM Bid WHERE tender_id = ?", (tender_id,))
 
-            # set winner and mark tender as Awarded
-            cur.execute("UPDATE Tender SET status = 'Awarded', winner_vendor_id = ? WHERE tender_id = ?", (winner_id, tender_id))
+            # update tender status to closed and set winner_vendor_id for that tender
+            cur.execute("UPDATE Tender SET status = 'Closed', winner_vendor_id = ? WHERE tender_id = ?", (winner_id, tender_id))
 
             # send notifications
             try:
-                # winner notification
+                # Winner notification
                 cur.execute(
                     "INSERT INTO Notification (vendor_id, title, message) VALUES (?, ?, ?)",
-                    (winner_id, f":green[**TENDER AWARDED**]", f":green[Congratulations. Tender: **{selected_ref}** awarded to your bid.]")
+                    (winner_id, ":green[TENDER AWARDED]", f"Congratulations. Tender **{selected_ref}** has awarded to your bid.")
                 )
                 # notify other bidders
-                for vid in bidder_ids:
+                for _, row in bids.iterrows():
+                    vid = int(row['vendor_id'])
                     if vid != winner_id:
                         cur.execute(
                             "INSERT INTO Notification (vendor_id, title, message) VALUES (?, ?, ?)",
-                            (vid, f":red[**TENDER RESULT**]", f":red[Your bid for the tender: **{selected_ref}** was not selcted. Thank you for your submission.]")
+                            (vid, ":red[TENDER RESULT]", f"Your bid for the tender **{selected_ref}** was not selected. Thank you for participating.")
                         )
             except Exception:
                 pass
 
             conn.commit()
-            st.success(f"Tender {selected_ref} awarded successfully and moved to BidLog.")
+            st.success(f"Tender {selected_ref} awarded successfully and moved to BidLog (tender closed).")
 
         except Exception as e:
             conn.rollback()
