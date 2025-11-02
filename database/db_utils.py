@@ -7,7 +7,7 @@ from datetime import datetime
 BASE_DIR = os.path.dirname(
     os.path.dirname(__file__)
 )
-DB_PATH = os.path.join(BASE_DIR, "tender___management.db")
+DB_PATH = os.path.join(BASE_DIR, "database.db")
 
 
 # sql queries here
@@ -737,16 +737,25 @@ def award():
     conn = get_connection()
     cur = conn.cursor()
 
+    org_id = st.session_state.get("org_id")
 
-    tenders = pd.read_sql_query(
-        "SELECT tender_id, tender_ref_no, title FROM Tender WHERE status = 'Open'",
-        conn
-    )
+    if org_id:
+        tenders = pd.read_sql_query(
+            "SELECT tender_id, tender_ref_no, title FROM Tender WHERE status = 'Open' AND org_id = ?",
+            conn,
+            params=(org_id,)
+        )
+    else:
+        # fallback (admin) sees all open tenders
+        tenders = pd.read_sql_query(
+            "SELECT tender_id, tender_ref_no, title FROM Tender WHERE status = 'Open'",
+            conn
+        )
+
     if tenders.empty:
         st.warning("No open tenders available.")
         conn.close()
         return
-
 
     selected_ref = st.selectbox(
         "Select an open tender:",
@@ -754,7 +763,6 @@ def award():
         format_func=lambda ref: f"{ref} — {tenders.loc[tenders['tender_ref_no'] == ref, 'title'].values[0]}"
     )
     tender_id = int(tenders.loc[tenders['tender_ref_no'] == selected_ref, 'tender_id'].values[0])
-
 
     bids = pd.read_sql_query(
         "SELECT * FROM Bid WHERE tender_id = ?",
@@ -768,7 +776,6 @@ def award():
 
     st.subheader("Bids for this tender")
     st.dataframe(bids, use_container_width=True)
-
 
     if bids['final_score'].isnull().any():
         st.warning("Cannot award this tender. Some bids have not been evaluated yet.")
@@ -786,12 +793,11 @@ def award():
     selected_vendor_str = st.selectbox("Select winner:", vendor_options)
     winner_id = int(selected_vendor_str.split(" — ")[0])
 
-
     if st.button("Award Tender"):
         try:
             closed_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-            # update bid status -> Accepted / Rejected
+            # copy to BidLog with accepted / rejected status
             for _, row in bids.iterrows():
                 vid = int(row['vendor_id'])
                 is_winner_flag = 'Yes' if vid == winner_id else 'No'
@@ -822,23 +828,21 @@ def award():
             # remove active bids
             cur.execute("DELETE FROM Bid WHERE tender_id = ?", (tender_id,))
 
-            # update tender status to closed and set winner_vendor_id for that tender
+            # update tender to Closed and set winner
             cur.execute("UPDATE Tender SET status = 'Closed', winner_vendor_id = ? WHERE tender_id = ?", (winner_id, tender_id))
 
-            # send notifications
+            # notifications
             try:
-                # Winner notification
                 cur.execute(
                     "INSERT INTO Notification (vendor_id, title, message) VALUES (?, ?, ?)",
-                    (winner_id, ":green[TENDER AWARDED]", f"Congratulations. Tender **{selected_ref}** has awarded to your bid.")
+                    (winner_id, ":green[TENDER AWARDED]", f"Congratulations! Tender {selected_ref} has awarded to your bid.")
                 )
-                # notify other bidders
                 for _, row in bids.iterrows():
                     vid = int(row['vendor_id'])
                     if vid != winner_id:
                         cur.execute(
                             "INSERT INTO Notification (vendor_id, title, message) VALUES (?, ?, ?)",
-                            (vid, ":red[TENDER RESULT]", f"Your bid for the tender **{selected_ref}** was not selected. Thank you for participating.")
+                            (vid, ":red[TENDER RESULT]", f"Your bid for the tender {selected_ref} was not selected. Thank you for participating.")
                         )
             except Exception:
                 pass
@@ -852,6 +856,7 @@ def award():
 
         finally:
             conn.close()
+
 
 # ---------------------------------------------------------
 

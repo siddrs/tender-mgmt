@@ -79,7 +79,7 @@ pip install -r requirements.txt
 streamlit run main.py
 ```
 
-The database (tender___management.db) is created and initialized automatically on first run.
+The database (database.db) is created and initialized automatically on first run.
 
 
 ## Project Structure

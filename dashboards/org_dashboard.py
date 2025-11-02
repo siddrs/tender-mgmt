@@ -105,7 +105,6 @@ def manage_bids():
             "— Select —",
             "View and Evaluate a Bid",
             "Award Bids",
-            "View Past Logs",
         ]
     )
 
@@ -119,10 +118,6 @@ def manage_bids():
 
     elif option == "Award Bids":
         award()
-        #pass
-    elif option == "View Past Logs":
-        view_logs()
-
 
 def manage_vendors():
     option = st.selectbox(
