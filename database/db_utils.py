@@ -180,17 +180,23 @@ def add_tender(ref_no, org_id, title, description, location, opening_date, closi
 
 
 def delete_tender(org_id):
+    """
+    Allows deletion only if today is before opening_date.
+    If the tender is currently in its open window (opening_date <= today <= closing_date),
+    shows and performs a withdraw operation instead.
+    """
+    from datetime import datetime as _dt
+
     conn = get_connection()
     cur = conn.cursor()
 
-    # Fetch all tenders
+    # Fetch open tenders (status 'Open') for this org
     cur.execute("""
         SELECT tender_id, tender_ref_no, title, description, location, status,
                opening_date, closing_date, publishing_date
         FROM Tender WHERE status = 'Open' AND org_id = ?
-    """, (org_id, ))
+    """, (org_id,))
     tenders = cur.fetchall()
-
 
     df = pd.DataFrame(
         tenders,
@@ -201,42 +207,169 @@ def delete_tender(org_id):
     )
 
     if df.empty:
-        st.warning("No tenders found that are available for deletion")
+        st.warning("No tenders found that are available for deletion or withdrawal.")
         conn.close()
         return
 
     st.markdown("### Open Tenders")
     st.dataframe(df.reset_index(drop=True), use_container_width=True)
 
-
     options = []
-
+    meta = {}
     for _, row in df.iterrows():
         s = f"{row['Reference No']} - {row['Title']}"
         options.append(s)
+        meta[s] = {
+            "tender_id": row["Tender ID"],
+            "opening_date": row["Opening Date"],
+            "closing_date": row["Closing Date"],
+        }
 
-    selected = st.selectbox("Select a Tender to Delete", options)
+    selected = st.selectbox("Select a Tender", options)
 
-    if st.button("Delete Tender"):
+    # parse dates and compare with today
+    selected_meta = meta[selected]
+    today = _dt.now().date()
 
-        to_extract_reference_id = selected.split(" - ")
-        tender_ref_no = to_extract_reference_id[0]
+    try:
+        opening = _dt.strptime(str(selected_meta["opening_date"]), "%Y-%m-%d").date()
+    except Exception:
+        opening = None
+    try:
+        closing = _dt.strptime(str(selected_meta["closing_date"]), "%Y-%m-%d").date()
+    except Exception:
+        closing = None
 
-        try:
-            cur.execute(
-                "DELETE FROM Tender WHERE tender_ref_no = ? AND status = 'Open'",
-                (tender_ref_no,)
-            )
-            conn.commit()
+    # Decision logic
+    if opening and today < opening:
+        st.info(f"Tender opens on {opening}. You may delete it before opening.")
+        if st.button("Delete Tender"):
+            try:
+                cur.execute(
+                    "DELETE FROM Tender WHERE tender_id = ? AND status = 'Open'",
+                    (selected_meta["tender_id"],)
+                )
+                conn.commit()
+                if cur.rowcount > 0:
+                    st.success(f"Tender '{selected}' deleted successfully.")
+                else:
+                    st.error("Tender could not be deleted. It may have changed status.")
+            except sqlite3.Error as e:
+                st.error(f"Database error: {e}")
+            finally:
+                conn.close()
+                return
 
-            if cur.rowcount > 0:
-                st.success(f"Tender '{tender_ref_no}' deleted successfully.")
-            else:
-                st.error("Tender could not be deleted. Check if it is open.")
+    elif opening and closing and opening <= today <= closing:
+        st.warning(f"Tender is currently open ({opening} → {closing}). You cannot delete it but you can withdraw it.")
+        st.markdown("Withdrawing will close the tender, move existing bids to BidLog as 'Withdrawn', and notify bidders.")
+        if st.button("Withdraw Tender"):
+            withdraw_tender(selected_meta["tender_id"], selected.split(" - ")[0], cur, conn)
+            conn.close()
+            return
 
-        except sqlite3.Error as e:
-            st.error(f"Database error: {e}")
-        finally:
+    else:
+        # If dates missing or today > closing
+        if closing and today > closing:
+            st.error(f"Tender closed on {closing}. It cannot be deleted or withdrawn via this interface.")
+        else:
+            # fallback if opening/closing not parsable
+            st.error("Tender dates are not available or invalid. Deletion/withdrawal blocked.")
+        conn.close()
+        return
+
+
+def withdraw_tender(tender_id, tender_ref_no, cur=None, conn=None):
+    """
+    Withdraw a tender that is currently in its open window.
+    - Moves current Bid rows to BidLog with status 'Withdrawn' and is_winner='No'
+    - Deletes moved rows from Bid
+    - Updates Tender.status to 'Closed'
+    - Inserts notifications for all affected vendors
+    """
+    close_conn_here = False
+    if conn is None:
+        conn = get_connection()
+        cur = conn.cursor()
+        close_conn_here = True
+
+    try:
+        now_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # fetch all active bids for this tender
+        cur.execute("SELECT * FROM Bid WHERE tender_id = ?", (tender_id,))
+        bid_rows = cur.fetchall()
+        # get column names for Bid to map values
+        bid_cols_q = "PRAGMA table_info(Bid)"
+        cur.execute(bid_cols_q)
+        bid_cols = [r[1] for r in cur.fetchall()]  # names in order
+        # map column positions for known fields we'll copy
+        # We'll use column names explicitly to avoid schema-order dependence
+        cur.execute("""
+            SELECT vendor_id, tender_id, submission_date, technical_spec, financial_spec,
+                   status, opened_at, technical_score, financial_score, final_score, remarks
+            FROM Bid WHERE tender_id = ?
+        """, (tender_id,))
+        detailed_bids = cur.fetchall()
+
+        # set bid status to withdrawn
+        for row in detailed_bids:
+            vendor_id = row[0]
+            tid = row[1]
+            submission_date = row[2]
+            technical_spec = row[3]
+            financial_spec = row[4]
+            _status = 'Withdrawn'
+            opened_at = row[6]
+            technical_score = row[7]
+            financial_score = row[8]
+            final_score = row[9]
+            remarks = row[10]
+
+            cur.execute("""
+                INSERT INTO BidLog (
+                    vendor_id, tender_id, submission_date, technical_spec, financial_spec,
+                    status, opened_at, technical_score, financial_score, final_score,
+                    remarks, closed_timestamp, is_winner
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                vendor_id,
+                tid,
+                submission_date,
+                technical_spec,
+                financial_spec,
+                _status,
+                opened_at,
+                technical_score,
+                financial_score,
+                final_score,
+                remarks,
+                now_ts,
+                'No'
+            ))
+
+            try:
+                cur.execute(
+                    "INSERT INTO Notification (vendor_id, title, message) VALUES (?, ?, ?)",
+                    (vendor_id, "Tender Withdrawn", f"Tender {tender_ref_no} has been withdrawn by the organisation. Your bid has been archived.")
+                )
+            except Exception:
+                pass
+
+        # remove active bids
+        cur.execute("DELETE FROM Bid WHERE tender_id = ?", (tender_id,))
+
+        # close tender and clear winner
+        cur.execute("UPDATE Tender SET status = 'Closed', winner_vendor_id = NULL WHERE tender_id = ?", (tender_id,))
+
+        conn.commit()
+        st.success(f"Tender {tender_ref_no} withdrawn. Active bids archived and bidders notified.")
+
+    except Exception as e:
+        conn.rollback()
+        st.error(f"Error while withdrawing tender: {e}")
+    finally:
+        if close_conn_here:
             conn.close()
 
 # -----------------------------------------------------
@@ -408,12 +541,6 @@ def get_admin_by_email(email):
 # -------------------------------------------------------------------------
 
 def get_open_tenders(location=None, search=None, org_id=None):
-    """
-    Optional filters:
-      - location: exact match
-      - search: substring on title, description or tender_ref_no
-      - org_id: integer organisation id to limit results to one organisation
-    """
     conn = get_connection()
     query = """
         SELECT
@@ -533,12 +660,8 @@ def update_bid(vendor_id, tender_id, new_tech, new_fin):
     conn.commit()
     conn.close()
 
-
+## Get active and closed bids
 def get_bids_for_vendor(email):
-    """
-    Return both active bids (from Bid) and historical bids (from BidLog).
-    Adds organisation and vendor name fields and returns a `record_type` column.
-    """
     conn = get_connection()
     try:
         active_sql = """
