@@ -144,7 +144,7 @@ def setup_database():
     # ### DUMMY DATA ###
     # ##################
 
-    # ## 5 Govt. Orgs
+    ## 5 Govt. Orgs
     # cur.executescript("""
     # INSERT INTO Organisation (name, email, phone, address, password) VALUES
     #     ('Public Works Department (PWD)', 'contact@pwd.pune.gov.in', '91123011234', 'Pune', 'pwd123'),
@@ -153,8 +153,8 @@ def setup_database():
     #     ('Municipal Corporation of Pune (MCP)', 'eprocure@mcpune.gov.in', '92025501234', 'Pune', 'mcp123'),
     #     ('Indian Institute of Technology Bombay (IITB)', 'tenders@iitb.ac.in', '92225721234', 'Mumbai', 'iitb123');
     # """)
-
-
+    #
+    #
     # ## 7 Vendors
     # cur.executescript("""
     #     INSERT INTO Vendor (name, email, phone, address, password) VALUES
@@ -166,7 +166,7 @@ def setup_database():
     #     ('Atlas Solutions', 'team@atlassolutions.in', '9866066677', 'Pune', 'atlas123'),
     #     ('Prime TechnoCorp', 'hello@primetechcorp.in', '9877077788', 'Kolkata', 'prime123');
     # """)
-
+    #
     # ## Tenders (1-2 per org)
     # cur.executescript("""
     #     INSERT INTO Tender (tender_ref_no, org_id, title, description, location, status, opening_date, closing_date, publishing_date)
@@ -174,22 +174,22 @@ def setup_database():
     #     -- PWD
     #     ('PWD-2025-01', 1, 'Road Repair and Maintenance', 'Annual resurfacing and repair of arterial roads in Delhi region.', 'Delhi', 'Open', '2025-11-01', '2025-11-30', '2025-10-31'),
     #     ('PWD-2025-02', 1, 'Drainage System Upgrade', 'Upgradation of stormwater drainage system in Central Delhi zone.', 'Delhi', 'Open', '2025-11-05', '2025-12-05', '2025-11-02'),
-
+    #
     #     -- Indian Railways
     #     ('IR-2025-01', 2, 'Railway Station Renovation', 'Modernization of passenger amenities at New Delhi Station.', 'New Delhi', 'Open', '2025-11-02', '2025-12-06', '2025-11-01'),
     #     ('IR-2025-02', 2, 'Track Electrification Project', 'Electrification of 50 km of railway track in the Northern Division.', 'Haryana', 'Open', '2025-11-07', '2025-12-15', '2025-11-03'),
-
+    #
     #     -- NTPC
     #     ('NTPC-2025-01', 3, 'Procurement of Solar Panels', 'Supply and installation of 1000 high-efficiency solar panels.', 'Noida', 'Open', '2025-11-03', '2025-11-28', '2025-11-02'),
-
+    #
     #     -- MCP
     #     ('MCP-2025-01', 4, 'Solid Waste Management Project', 'Design and operation of automated waste collection systems.', 'Pune', 'Open', '2025-11-05', '2025-12-10', '2025-11-03'),
     #     ('MCP-2025-02', 4, 'Street Lighting Installation', 'Installation of LED streetlights in newly developed wards.', 'Pune', 'Open', '2025-11-09', '2025-12-05', '2025-11-04'),
-
+    #
     #     -- IITB
     #     ('IITB-2025-01', 5, 'Campus Network Upgrade', 'Deployment of Wi-Fi 6 access points across academic blocks.', 'Mumbai', 'Open', '2025-11-06', '2025-11-25', '2025-11-04');
     # """)
-
+    #
     # ## Bids
     # cur.executescript("""
     #     INSERT INTO Bid (vendor_id, tender_id, submission_date, technical_spec, financial_spec, status)
@@ -198,42 +198,42 @@ def setup_database():
     #     (1, 1, '2025-11-02', 'Durable bitumen mix; ISO-certified process', '₹8,90,000', 'Submitted'),
     #     (2, 1, '2025-11-03', 'Rapid-lay asphalt solution', '₹9,10,000', 'Submitted'),
     #     (3, 1, '2025-11-03', 'Smart road sensors integrated', '₹9,30,000', 'Submitted'),
-
+    #
     #     -- PWD-2025-02
     #     (4, 2, '2025-11-06', 'HDPE drainage pipes; 10-year warranty', '₹14,50,000', 'Submitted'),
     #     (5, 2, '2025-11-07', 'Concrete reinforced chambers', '₹14,20,000', 'Submitted'),
-
+    #
     #     -- IR-2025-01
     #     (1, 3, '2025-11-04', 'Modular renovation design; fire-safety compliant', '₹18,40,000', 'Submitted'),
     #     (6, 3, '2025-11-04', 'Modern seating and LED signage', '₹18,10,000', 'Submitted'),
-
+    #
     #     -- IR-2025-02
     #     (2, 4, '2025-11-08', 'High-capacity transformers; BIS approved', '₹24,80,000', 'Submitted'),
     #     (7, 4, '2025-11-09', 'Copper wiring and energy-efficient motors', '₹25,10,000', 'Submitted'),
-
+    #
     #     -- NTPC-2025-01
     #     (3, 5, '2025-11-06', 'Mono PERC solar modules; 25-year warranty', '₹52,00,000', 'Submitted'),
     #     (4, 5, '2025-11-06', 'Tier-1 panels; on-site maintenance', '₹51,50,000', 'Submitted'),
     #     (5, 5, '2025-11-07', 'Hybrid inverter system included', '₹53,00,000', 'Submitted'),
-
+    #
     #     -- MCP-2025-01
     #     (6, 6, '2025-11-07', 'IoT-based waste collection system', '₹39,00,000', 'Submitted'),
     #     (7, 6, '2025-11-08', 'Automated sorting and compacting units', '₹38,70,000', 'Submitted'),
-
+    #
     #     -- MCP-2025-02
     #     (1, 7, '2025-11-10', 'LED lights with motion sensors', '₹16,50,000', 'Submitted'),
     #     (2, 7, '2025-11-10', 'Solar-powered street lights', '₹16,80,000', 'Submitted'),
-
+    #
     #     -- IITB-2025-01
     #     (3, 8, '2025-11-09', 'Wi-Fi 6 deployment; managed cloud control', '₹21,00,000', 'Submitted'),
     #     (5, 8, '2025-11-09', 'Full-fiber backbone with redundant routing', '₹20,70,000', 'Submitted'),
     #     (7, 8, '2025-11-10', 'High-density mesh setup', '₹20,90,000', 'Submitted');
     # """)
-
-
-    conn.commit()
-    conn.close()
-    print("Database setup complete.")
+    #
+    #
+    # conn.commit()
+    # conn.close()
+    # print("Database setup complete.")
 
     
 
